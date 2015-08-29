@@ -10,17 +10,17 @@
 #define MAIN_H
 
 #include <arpa/inet.h>
+#include <memory.h>
+#include <netdb.h>
+#include <netinet/in.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
-#include <unistd.h>
 #include <sys/types.h>
 #include <sys/socket.h>
-#include <pthread.h>
-#include <netdb.h>
-#include <netinet/in.h>
 #include <string.h>
 #include <sys/time.h>
+#include <unistd.h>
 #include "irc_connection.h"
 //#include <netdb.h>
 
