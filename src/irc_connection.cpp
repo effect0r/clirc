@@ -8,8 +8,7 @@
 
 #include "irc_connection.h"
 
-	void
-JoinChannel(irc_connection *Connection, char *Channel)
+void JoinChannel(irc_connection *Connection, char *Channel)
 {
 	if (Connection->IsConnected)
 	{
@@ -18,8 +17,7 @@ JoinChannel(irc_connection *Connection, char *Channel)
 	}
 }
 
-	void
-SendMessage(irc_connection *Connection, char *Channel, char *Message)
+void SendMessage(irc_connection *Connection, char *Channel, char *Message)
 {
 	if (Connection->IsConnected)
 	{
@@ -28,8 +26,7 @@ SendMessage(irc_connection *Connection, char *Channel, char *Message)
 	}
 }
 
-	void
-CloseConnection(irc_connection *Connection)
+void CloseConnection(irc_connection *Connection)
 {
 	if (Connection->IsConnected)
 	{
@@ -46,8 +43,7 @@ CloseConnection(irc_connection *Connection)
 	free(Connection->Pass);
 	fclose(Connection->OutStream);
 }
-	void
-ParseMessage(irc_connection *Connection, char *Message)
+void ParseMessage(irc_connection *Connection, char *Message)
 {
 	char *Command;
 	char *HostName;
@@ -100,18 +96,152 @@ ParseMessage(irc_connection *Connection, char *Message)
 						*Param = '\0';
 						Param++;
 					}
-					if (!strcmp(text, "join"))
-					{
-						JoinChannel(Connection, Param);
-					}
 					if (!strcmp(text, "help"))
 					{
 						SendMessage(Connection,	"#effect0r",
-									"Greetings mortal, I am an IRC bot written in (the good parts) of c++! I was written by Cory Henderlite (effect0r) from Handmade.dev. Available commands: !help");
+								"Greetings mortal, I am an IRC bot written in (the good parts) of c++! I was written by Cory Henderlite (effect0r) from Handmade.dev.");
+					}
+					if (!strcmp(text, "commands"))
+					{
+						SendMessage(Connection, "#effect0r", "Here are the common HH stream commands: !time, !today, !schedule, !now, !site, !old, !wrist, !who, !buy, !game, !stream, !lang, !ide, !editoradvice, !college, !keyboard, !switches, !totalTime, !art, !compiler, !build, !render, !learning, !lib, !software, !tablet, !script, !quotelist, !rules, !userlist, !never, !design, !manifesto, !ask");
+					}
+					if (!strcmp(text, "time"))
+					{
+					}
+					if (!strcmp(text, "today"))
+					{
+					}
+					if (!strcmp(text, "scehdule"))
+					{
+					}
+					if (!strcmp(text, "now"))
+					{
+					}
+					if (!strcmp(text, "site"))
+					{
+						SendMessage(Connection, "#effect0r", "HH Website: http://goo.gl/fmjocD :: HH Forums: http://goo.gl/NuArvD");
+					}
+					if (!strcmp(text, "old"))
+					{
+					}
+					if (!strcmp(text, "wrist"))
+					{
+					}
+					if (!strcmp(text, "who"))
+					{
+					}
+					if (!strcmp(text, "buy"))
+					{
+					}
+					if (!strcmp(text, "game"))
+					{
+					}
+					if (!strcmp(text, "stream"))
+					{
+					}
+					if (!strcmp(text, "lang"))
+					{
+					}
+					if (!strcmp(text, "ide"))
+					{
+					}
+					if (!strcmp(text, "editoradvice"))
+					{
+					}
+					if (!strcmp(text, "college"))
+					{
+					}
+					if (!strcmp(text, "keyboard"))
+					{
+					}
+					if (!strcmp(text, "switches"))
+					{
+					}
+					if (!strcmp(text, "totaltime"))
+					{
+					}
+					if (!strcmp(text, "art"))
+					{
+					}
+					if (!strcmp(text, "compiler"))
+					{
+					}
+					if (!strcmp(text, "build"))
+					{
+					}
+					if (!strcmp(text, "render"))
+					{
+					}
+					if (!strcmp(text, "learning"))
+					{
+					}
+					if (!strcmp(text, "lib"))
+					{
+					}
+					if (!strcmp(text, "software"))
+					{
+					}
+					if (!strcmp(text, "tablet"))
+					{
+					}
+					if (!strcmp(text, "script"))
+					{
+					}
+					if (!strcmp(text, "quotelist"))
+					{
+					}
+					if (!strcmp(text, "rules"))
+					{
+					}
+					if (!strcmp(text, "userlist"))
+					{
+					}
+					if (!strcmp(text, "never"))
+					{
+					}
+					if (!strcmp(text, "design"))
+					{
+					}
+					if (!strcmp(text, "manifesto"))
+					{
+					}
+					if (!strcmp(text, "ask"))
+					{
+					}
+					if (!strcmp(text, ""))
+					{
+					}
+					if (!strcmp(text, ""))
+					{
+					}
+					if (!strcmp(text, ""))
+					{
+					}
+					if (!strcmp(text, ""))
+					{
+					}
+					if (!strcmp(text, ""))
+					{
+					}
+					if (!strcmp(text, ""))
+					{
+					}
+					if (!strcmp(text, ""))
+					{
+					}
+					if (!strcmp(text, ""))
+					{
 					}
 				}
 			}
-			printf("%s\n", text);
+		}
+		// NOTE(cory): Join channels in the channel list after MOTD has finished.
+		else if (!strcmp(Command, "376"))
+		{
+			for (int i = 0; i < Connection->ConfigInfo.ChannelCount; ++i)
+			{
+				JoinChannel(Connection, Connection->ConfigInfo.ChannelList[i]);
+			}
 		}
 	}
 
@@ -170,17 +300,16 @@ void MessageLoop(irc_connection *Connection)
 	}
 }
 
-int Connect(irc_connection *Connection, char *Server, char *Nick, char *User,
-		char *Name, char *Pass, char *Port)
+int Connect(irc_connection *Connection) 
 {
 	int ConnError;
 	ZERO(&Connection->Hints, Connection->Hints);
 	Connection->Hints.ai_family = AF_UNSPEC;
 	Connection->Hints.ai_socktype = SOCK_STREAM;
-	if ((strlen(Port) > 0) && (strlen(Port) < 0xFFFF))
+	if ((strlen(Connection->Port) > 0) && (strlen(Connection->Port) < 0xFFFF))
 	{
-		Connection->Status = getaddrinfo(Server, Port, &Connection->Hints,
-				&Connection->ServerInfo);
+		Connection->Status = getaddrinfo(Connection->Server, Connection->Port, 
+										 &Connection->Hints, &Connection->ServerInfo);
 	}
 	else
 	{
@@ -199,31 +328,11 @@ int Connect(irc_connection *Connection, char *Server, char *Nick, char *User,
 			Connection->OutStream = fdopen(Connection->Socket, "w");
 			if (Connection->OutStream)
 			{
-				Connection->Port = STRINGALLOC(Port);
-				strcpy(Connection->Port, Port);
-
-				Connection->Nick = STRINGALLOC(Nick);
-				strcpy(Connection->Nick, Nick);
-
-				Connection->Server = STRINGALLOC(Server);
-				strcpy(Connection->Server, Server);
-
-				Connection->User = STRINGALLOC(User);
-				strcpy(Connection->User, User);
-
-				if (Pass)
-				{
-					Connection->Pass = STRINGALLOC(Pass);
-					strcpy(Connection->Pass, Pass);
-				}
-
 				Connection->IsConnected = 1;
 
-				fprintf(Connection->OutStream, "PASS %s\r\n", Pass);
-				fprintf(Connection->OutStream, "NICK %s\r\n", Nick);
-				fprintf(Connection->OutStream, "USER %s * 0 :%s\r\n", User,
-						Name);
-				//fprintf(Connection->OutStream, "JOIN %s\r\n", "#effect0r");
+				fprintf(Connection->OutStream, "PASS %s\r\n", Connection->Pass);
+				fprintf(Connection->OutStream, "NICK %s\r\n", Connection->Nick);
+				fprintf(Connection->OutStream, "USER %s * 0 :%s\r\n", Connection->User, Connection->Nick);
 				fflush(Connection->OutStream);
 			}
 			else

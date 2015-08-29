@@ -10,16 +10,19 @@
 #define MAIN_H
 
 #include <arpa/inet.h>
+#include <fcntl.h>
 #include <memory.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <stdarg.h>
-#include <sys/types.h>
-#include <sys/socket.h>
+#include <stdlib.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/time.h>
+#include <sys/types.h>
 #include <unistd.h>
 #include "irc_connection.h"
 //#include <netdb.h>
