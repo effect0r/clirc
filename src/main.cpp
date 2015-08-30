@@ -6,7 +6,6 @@
    $Notice: $
    ======================================================================== */
 #include "main.h"
-#include "irc_connection.cpp"
 
 map* MapNew(unsigned int size)
 {
@@ -26,6 +25,7 @@ int MapSearch(map *Map, char *Key)
 		if (!strcmp(Current.Key, Key))
 		{
 			Result = i;
+			break;
 		}
 	}
 	return Result;
@@ -42,18 +42,15 @@ void MapInsert(map *Map, char *Key, char *Value)
 
 	if (Map->Used == Map->Size)
 	{
-		pair *MapCopy = (pair*)malloc(sizeof(pair)*(2*Map->Size));
-		memcpy(MapCopy, Map->Pairs, Map->Size);
+		pair *PairCopy = (pair*)malloc(sizeof(pair)*(2*Map->Size));
+		memcpy(PairCopy, Map->Pairs, sizeof(pair)*Map->Size);
 
 		free(Map->Pairs);
-		Map->Pairs = MapCopy;
+		Map->Size *= 2;
+		Map->Pairs = PairCopy;
+	}
 
-		Map->Pairs[Map->Used++] = InsertPair;
-	}
-	else
-	{
-		Map->Pairs[Map->Used++] = InsertPair;
-	}
+	Map->Pairs[Map->Used++] = InsertPair;
 }
 
 void MapRemove(map *Map, char *Key)
@@ -75,6 +72,8 @@ int CharCount(char *String, char Check)
 	}
 	return Result;
 }
+
+#include "irc_connection.cpp"
 
 void OpenFile(char *FileName, irc_connection *Conn)
 {
@@ -218,7 +217,18 @@ void OpenFile(char *FileName, irc_connection *Conn)
 											*NextLine = '\0';
 											NextLine++;
 										}
-										MapInsert(Conn->Map, Line, Spam);
+										int WordCount = CharCount(Line, ',') + 1;
+										for (int i = 0; i < WordCount; ++i)
+										{
+											char *Word = strchr(Line, ',');
+											if (Word)
+											{
+												*Word = '\0';
+												Word++;
+											}
+											MapInsert(Conn->Map, Line, Spam);
+											Line = Word;
+										}
 										Line = NextLine;
 									}
 

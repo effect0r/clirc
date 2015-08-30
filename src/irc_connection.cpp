@@ -78,7 +78,7 @@ void ParseMessage(irc_connection *Connection, char *Message)
 			*ident = '\0';
 			ident++;
 		}
-		char CommandTrigger = '!';
+
 		if (!strcmp(Command, "PRIVMSG"))
 		{
 			char *text = strchr(Parameters, ':');
@@ -86,152 +86,24 @@ void ParseMessage(irc_connection *Connection, char *Message)
 			text++;
 			if (!strcmp(FromNick, "effect0r"))
 			{
-				if (text[0] == CommandTrigger)
+				if (text[0] == Connection->ConfigInfo.CommandPrefix)
 				{
 					*text = '\0';
 					text++;
-					char *Param= strchr(text, ' ');
+					char *Param = strchr(text, ' ');
 					if (Param)
 					{
 						*Param = '\0';
 						Param++;
 					}
-					if (!strcmp(text, "help"))
+					int CommandNumber = MapSearch(Connection->Map, text);
+					if (CommandNumber >= 0)
 					{
-						SendMessage(Connection,	"#effect0r",
-								"Greetings mortal, I am an IRC bot written in (the good parts) of c++! I was written by Cory Henderlite (effect0r) from Handmade.dev.");
+						//stuff
+						char *MessageToSend = Connection->Map->Pairs[CommandNumber].Value;
+						SendMessage(Connection, "#effect0r", MessageToSend);
 					}
-					if (!strcmp(text, "commands"))
-					{
-						SendMessage(Connection, "#effect0r", "Here are the common HH stream commands: !time, !today, !schedule, !now, !site, !old, !wrist, !who, !buy, !game, !stream, !lang, !ide, !editoradvice, !college, !keyboard, !switches, !totalTime, !art, !compiler, !build, !render, !learning, !lib, !software, !tablet, !script, !quotelist, !rules, !userlist, !never, !design, !manifesto, !ask");
-					}
-					if (!strcmp(text, "time"))
-					{
-					}
-					if (!strcmp(text, "today"))
-					{
-					}
-					if (!strcmp(text, "scehdule"))
-					{
-					}
-					if (!strcmp(text, "now"))
-					{
-					}
-					if (!strcmp(text, "site"))
-					{
-						SendMessage(Connection, "#effect0r", "HH Website: http://goo.gl/fmjocD :: HH Forums: http://goo.gl/NuArvD");
-					}
-					if (!strcmp(text, "old"))
-					{
-					}
-					if (!strcmp(text, "wrist"))
-					{
-					}
-					if (!strcmp(text, "who"))
-					{
-					}
-					if (!strcmp(text, "buy"))
-					{
-					}
-					if (!strcmp(text, "game"))
-					{
-					}
-					if (!strcmp(text, "stream"))
-					{
-					}
-					if (!strcmp(text, "lang"))
-					{
-					}
-					if (!strcmp(text, "ide"))
-					{
-					}
-					if (!strcmp(text, "editoradvice"))
-					{
-					}
-					if (!strcmp(text, "college"))
-					{
-					}
-					if (!strcmp(text, "keyboard"))
-					{
-					}
-					if (!strcmp(text, "switches"))
-					{
-					}
-					if (!strcmp(text, "totaltime"))
-					{
-					}
-					if (!strcmp(text, "art"))
-					{
-					}
-					if (!strcmp(text, "compiler"))
-					{
-					}
-					if (!strcmp(text, "build"))
-					{
-					}
-					if (!strcmp(text, "render"))
-					{
-					}
-					if (!strcmp(text, "learning"))
-					{
-					}
-					if (!strcmp(text, "lib"))
-					{
-					}
-					if (!strcmp(text, "software"))
-					{
-					}
-					if (!strcmp(text, "tablet"))
-					{
-					}
-					if (!strcmp(text, "script"))
-					{
-					}
-					if (!strcmp(text, "quotelist"))
-					{
-					}
-					if (!strcmp(text, "rules"))
-					{
-					}
-					if (!strcmp(text, "userlist"))
-					{
-					}
-					if (!strcmp(text, "never"))
-					{
-					}
-					if (!strcmp(text, "design"))
-					{
-					}
-					if (!strcmp(text, "manifesto"))
-					{
-					}
-					if (!strcmp(text, "ask"))
-					{
-					}
-					if (!strcmp(text, ""))
-					{
-					}
-					if (!strcmp(text, ""))
-					{
-					}
-					if (!strcmp(text, ""))
-					{
-					}
-					if (!strcmp(text, ""))
-					{
-					}
-					if (!strcmp(text, ""))
-					{
-					}
-					if (!strcmp(text, ""))
-					{
-					}
-					if (!strcmp(text, ""))
-					{
-					}
-					if (!strcmp(text, ""))
-					{
-					}
+
 				}
 			}
 		}
