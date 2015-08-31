@@ -22,6 +22,12 @@ struct server_data
     char *target;
 };
 
+struct quote_list
+{
+	unsigned int TotalQuotes;
+	sqlite3 *QuoteDB; 
+};
+
 struct config_info
 {
 	int ChannelCount;
@@ -36,7 +42,7 @@ struct config_info
     char *User;
     char *Pass;
 	map *FaqCommandsMap;
-	sqlite3 *QuoteList; 
+	quote_list QuoteList;
 };
 
 struct irc_connection

@@ -44,14 +44,44 @@ void CloseConnection(irc_connection *Connection)
 	fclose(Connection->OutStream);
 }
 
-static int callback(void *data, int argc, char **argv, char**azColName)
+static int InsertQuote(void *data, int NumArgs, char **Rows, char **Columns)
 {
+	return 0;
+}
+
+static int SelectQuote(void *data, int NumArgs, char **Rows, char **Columns)
+{
+	// NOTE(effect0r): (#1) Are you okay with that, Mr. Compiler? --Casey, 26 Feb 2015
 	irc_connection *Conn = (irc_connection*)data;
-	for (int i = 0; i < argc; ++i)
+	char Quote[256];
+	char FormattedTime[256];
+	char *ID = 0;
+	char *TimeStamp = 0;
+	char *QuoteText = 0;
+
+	struct tm tv;
+	memset(&tv, 0, sizeof(struct tm));
+
+	for (int i = 0; i < NumArgs; ++i)
 	{
-		printf("%s = %s\n", azColName[i],argv[i]?argv[i]:"NULL");
+		if (!strcmp(Columns[i], "timestamp"))
+		{
+			TimeStamp = Rows[i];
+		}
+		else if (!strcmp(Columns[i], "id"))
+		{
+			ID = Rows[i];
+		}
+		else if (!strcmp(Columns[i], "text"))
+		{
+			QuoteText = Rows[i];
+		}
 	}
-	printf("\n");
+	strptime(TimeStamp, "%s", &tv);
+	strftime(FormattedTime, sizeof(FormattedTime), "%d %b %Y", &tv);
+	sprintf(Quote, "(#%s) \"%s\" --Casey, %s", ID, QuoteText, FormattedTime);
+
+	SendMessage(Conn, "#effect0r", Quote);
 	return 0;
 }
 
@@ -119,7 +149,7 @@ void ParseMessage(irc_connection *Connection, char *Message)
 							strcat(Query, Param);
 
 							char *ErrorMsg = 0;
-							int rc = sqlite3_exec(Connection->ConfigInfo.QuoteList, Query, callback, (void*)Connection, &ErrorMsg);
+							int rc = sqlite3_exec(Connection->ConfigInfo.QuoteList.QuoteDB, Query, SelectQuote, (void*)Connection, &ErrorMsg);
 							if (rc != SQLITE_OK) 
 							{
 								//error
@@ -129,10 +159,30 @@ void ParseMessage(irc_connection *Connection, char *Message)
 							{
 								//success
 							}
-							SendMessage(Connection, "#effect0r", Query);
+						}
+						else if (!strcmp(text, "addquote"))
+						{
+							char *ErrorMsg = 0;
+							time_t Now = time(0);
+							char CurrentTime[256];
+							snprintf(CurrentTime, sizeof(CurrentTime), "%lu", Now);
+
+							char *Query = sqlite3_mprintf("INSERT INTO quote (text,timestamp) VALUES ('%q','%q')", Param, CurrentTime);
+							int rc = sqlite3_exec(Connection->ConfigInfo.QuoteList.QuoteDB, Query, InsertQuote, (void*)Connection, &ErrorMsg);
+							if (rc != SQLITE_OK)
+							{
+								sqlite3_free(ErrorMsg);
+							}
+							else
+							{
+								//success
+								//"Added as !quote %s.
+								char Buffer[32];
+								snprintf(Buffer, sizeof(Buffer), "Added as !quote %d", ++Connection->ConfigInfo.QuoteList.TotalQuotes);
+								SendMessage(Connection, "#effect0r", Buffer);
+							}
 						}
 					}
-
 				}
 			}
 		}

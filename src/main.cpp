@@ -68,6 +68,22 @@ int CharCount(char *String, char Check)
 
 #include "irc_connection.cpp"
 
+static int CountQuery(void *data, int NumArgs, char **Rows, char **Columns)
+{
+	int NumQuotes = 0;
+	for (int i = 0; i < NumArgs; ++i)
+	{
+		if (!strcmp(Columns[i], "count(*)"))
+		{
+			NumQuotes = atoi(Rows[i]);
+		}
+		printf("%s = %s\n", Columns[i], Rows[i] ? Rows[i] : "NULL");
+	}
+	irc_connection *Connection = (irc_connection*)data;
+	Connection->ConfigInfo.QuoteList.TotalQuotes = NumQuotes;
+	return 0;
+}
+
 void OpenFile(char *FileName, irc_connection *Conn)
 {
 	struct stat Stats;
@@ -184,7 +200,7 @@ void OpenFile(char *FileName, irc_connection *Conn)
 						else if (!strcmp(Header, "quotedb"))
 						{
 							char *DbFilename = Items;
-							int rc = sqlite3_open(DbFilename, &Conn->ConfigInfo.QuoteList);
+							int rc = sqlite3_open(DbFilename, &Conn->ConfigInfo.QuoteList.QuoteDB);
 							if (rc)
 							{
 								//error
@@ -192,6 +208,17 @@ void OpenFile(char *FileName, irc_connection *Conn)
 							else 
 							{
 								printf("DB opened successfully\n");
+								char *ErrorMsg = 0;
+								char *Query = "SELECT count(*) FROM QUOTE;";
+								int rc = sqlite3_exec(Conn->ConfigInfo.QuoteList.QuoteDB, Query, CountQuery, (void*)Conn, &ErrorMsg);
+								if (rc != SQLITE_OK) 
+								{
+									sqlite3_free(ErrorMsg);
+								}
+								else
+								{
+									//success
+								}
 							}
 						}
 						else if (!strcmp(Header, "infodb"))
