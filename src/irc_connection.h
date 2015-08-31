@@ -1,12 +1,4 @@
 #if !defined(IRC_CONNECTION_H)
-/* ========================================================================
- $File: $
- $Date: $
- $Revision: $
- $Creator: Cory Henderlite $
- $Notice:  $
- ======================================================================== */
-
 #define IRC_CONNECTION_H
 
 struct pair
@@ -30,31 +22,29 @@ struct server_data
     char *target;
 };
 
-struct irc_command_hook
-{
-    char *IrcCommand;
-    int (*function)(char *, server_data *, void *);
-    irc_command_hook *Next;
-};
-
 struct config_info
 {
 	int ChannelCount;
 	char **ChannelList;
 	char CommandPrefix;
-};
-
-struct irc_connection
-{
-    int IsConnected;
-	config_info ConfigInfo;
-    char *Port;
+	char *Admin;
+	int WhiteListCount;
+	char **WhiteList;
+	char *Port;
     char *Nick;
     char *Server;
     char *User;
     char *Pass;
-	map *Map;
+	map *FaqCommandsMap;
+	sqlite3 *QuoteList; 
+};
+
+struct irc_connection
+{
+	config_info ConfigInfo;
+   
     //NOTE: connection info
+    int IsConnected;
     struct addrinfo Hints, *ServerInfo;
     int Status;
     int Socket;

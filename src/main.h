@@ -18,6 +18,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
+#include <sqlite3.h>
 #include <sys/mman.h>
 #include <sys/socket.h>
 #include <sys/stat.h>

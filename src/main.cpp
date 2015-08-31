@@ -1,10 +1,3 @@
-/* ========================================================================
-   $File: $
-   $Date: $
-   $Revision: $
-   $Creator: Cory Henderlite $
-   $Notice: $
-   ======================================================================== */
 #include "main.h"
 
 map* MapNew(unsigned int size)
@@ -86,8 +79,6 @@ void OpenFile(char *FileName, irc_connection *Conn)
 			char *FileData = (char*)mmap(0, Stats.st_size, PROT_READ, MAP_SHARED, descriptor, 0);
 			if (FileData)
 			{
-				//process 
-				//"channels=#effect0r,#rob\nprefix=.\nnick=effect0r-cpp\nserver=irc.globalgamers.net\nport=6667\npass=\nuser=effect0r-cpp\n"
 				char *DataCopy = (char*)malloc(sizeof(char)*strlen(FileData));
 				memcpy(DataCopy, FileData, strlen(FileData)); 
 
@@ -103,14 +94,12 @@ void OpenFile(char *FileName, irc_connection *Conn)
 					Items = strchr(Header, '=');
 					if (Items)
 					{
-						*Items = '\0';
-						Items++;
+						*Items++ = '\0';
 					}
 					if (Items[0] == '\n')
 					{
 						//nothing here
-						*Items = '\0';
-						Items++;
+						*Items++ = '\0';
 						Header = Items;
 						continue;
 					}
@@ -119,24 +108,21 @@ void OpenFile(char *FileName, irc_connection *Conn)
 						char *NewLine = strchr(Items, '\n');
 						if (NewLine)
 						{
-							*NewLine = '\0';
-							NewLine++;
+							*NewLine++ = '\0';
 						}
-						//THINGS!
 						if (!strcmp(Header, "channels"))
 						{
-							int ChannelCount = CharCount(Items, ',');
-							// NOTE(cory): Uh, make this better. Seriously.
-							Conn->ConfigInfo.ChannelList = (char **)malloc(sizeof(char)*(ChannelCount+1));
-							for (int i = 0; i < ChannelCount+1; ++i)
+							int ChannelCount = CharCount(Items, ',') + 1;
+							// NOTE(effect0r): Uh, make this better. Seriously.
+							Conn->ConfigInfo.ChannelList = (char **)malloc(sizeof(char)*ChannelCount);
+							for (int i = 0; i < ChannelCount; ++i)
 							{
 								char *Chan = strchr(Items, ',');
 								if (Chan)
 								{
-									*Chan = '\0';
-									Chan++;
+									*Chan++ = '\0';
 								}
-								Conn->ConfigInfo.ChannelCount = ChannelCount+1;
+								Conn->ConfigInfo.ChannelCount = ChannelCount;
 								Conn->ConfigInfo.ChannelList[i] = STRINGALLOC(Items);
 								memcpy(Conn->ConfigInfo.ChannelList[i], Items, strlen(Items));
 								Items = Chan;
@@ -148,42 +134,65 @@ void OpenFile(char *FileName, irc_connection *Conn)
 						}
 						else if (!strcmp(Header, "nick"))								
 						{
-							Conn->Nick = STRINGALLOC(Items);
-							memcpy(Conn->Nick, Items, strlen(Items));
+							Conn->ConfigInfo.Nick = STRINGALLOC(Items);
+							memcpy(Conn->ConfigInfo.Nick, Items, strlen(Items));
 						}
 						else if (!strcmp(Header, "server"))								
 						{
-							Conn->Server = STRINGALLOC(Items);
-							memcpy(Conn->Server, Items, strlen(Items));
+							Conn->ConfigInfo.Server = STRINGALLOC(Items);
+							memcpy(Conn->ConfigInfo.Server, Items, strlen(Items));
 						}
 						else if (!strcmp(Header, "port"))
 						{
-							Conn->Port = STRINGALLOC(Items);
-							memcpy(Conn->Port, Items, strlen(Items));
+							Conn->ConfigInfo.Port = STRINGALLOC(Items);
+							memcpy(Conn->ConfigInfo.Port, Items, strlen(Items));
 						}
 						else if (!strcmp(Header, "pass"))
 						{
-							Conn->Pass = STRINGALLOC(Items);
-							memcpy(Conn->Pass, Items, strlen(Items));
+							Conn->ConfigInfo.Pass = STRINGALLOC(Items);
+							memcpy(Conn->ConfigInfo.Pass, Items, strlen(Items));
 						}
 						else if (!strcmp(Header, "user"))
 						{
-							Conn->User = STRINGALLOC(Items);
-							memcpy(Conn->User, Items, strlen(Items));
+							Conn->ConfigInfo.User = STRINGALLOC(Items);
+							memcpy(Conn->ConfigInfo.User, Items, strlen(Items));
+						}
+						else if (!strcmp(Header, "admins"))
+						{
+							Conn->ConfigInfo.Admin = STRINGALLOC(Items);
+							memcpy(Conn->ConfigInfo.Admin, Items, strlen(Items));
+						}
+						else if (!strcmp(Header, "whitelisted"))
+						{
+							char *CurrentUser = Items;
+							char *EndOfFile = strchr(Items, '\n');
+							int TotalUsers = CharCount(Items, ',') + 1;
+							Conn->ConfigInfo.WhiteListCount = TotalUsers;
+							Conn->ConfigInfo.WhiteList = (char**)malloc(sizeof(char) * TotalUsers);
+							for (int i = 0; i < TotalUsers; ++i)
+							{
+								char *NextUser = strchr(CurrentUser, ',');
+								if (NextUser)
+								{
+									*NextUser++ = '\0';
+								}
+								Conn->ConfigInfo.WhiteList[i] = STRINGALLOC(CurrentUser);
+								memcpy(Conn->ConfigInfo.WhiteList[i], CurrentUser, strlen(CurrentUser));
+								CurrentUser = NextUser;
+							}
 						}
 						else if (!strcmp(Header, "quotedb"))
 						{
-							int QuoteDesc = open(Items, O_RDONLY);
-							struct stat QuotesStat;
-							if (stat(Items, &QuotesStat) != -1)
+							char *DbFilename = Items;
+							int rc = sqlite3_open(DbFilename, &Conn->ConfigInfo.QuoteList);
+							if (rc)
 							{
-								char *QuotesList = (char*)mmap(0, QuotesStat.st_size, PROT_READ, MAP_SHARED, QuoteDesc, 0);
-								if (QuotesList)
-								{
-									//Process quotes
-								}
+								//error
 							}
-
+							else 
+							{
+								printf("DB opened successfully\n");
+							}
 						}
 						else if (!strcmp(Header, "infodb"))
 						{
@@ -198,7 +207,6 @@ void OpenFile(char *FileName, irc_connection *Conn)
 									memcpy(ListCopy, CommandsList, strlen(CommandsList));
 
 									char *EndOfFile = &ListCopy[strlen(ListCopy)];
-									//Process commands: <comma separated list of triggers>=<what to say>\n
 									char *Line = ListCopy;
 									for (;;)
 									{
@@ -214,8 +222,7 @@ void OpenFile(char *FileName, irc_connection *Conn)
 										char *NextLine = strchr(Spam, '\n');
 										if (NextLine)
 										{
-											*NextLine = '\0';
-											NextLine++;
+											*NextLine++ = '\0';
 										}
 										int WordCount = CharCount(Line, ',') + 1;
 										for (int i = 0; i < WordCount; ++i)
@@ -223,15 +230,16 @@ void OpenFile(char *FileName, irc_connection *Conn)
 											char *Word = strchr(Line, ',');
 											if (Word)
 											{
-												*Word = '\0';
-												Word++;
+												*Word++ = '\0';
 											}
-											MapInsert(Conn->Map, Line, Spam);
+											MapInsert(Conn->ConfigInfo.FaqCommandsMap, Line, Spam);
 											Line = Word;
 										}
 										Line = NextLine;
 									}
-
+									free(ListCopy);
+									munmap(CommandsList, InfoStats.st_size);
+									close(InfoDesc);
 								}
 							}
 						}
@@ -256,7 +264,7 @@ int main(int argc, char **argv)
 	}
 
 	irc_connection Conn = { 0 };
-	Conn.Map = MapNew(10);
+	Conn.ConfigInfo.FaqCommandsMap = MapNew(10);
 
 	OpenFile(argv[1], &Conn);
 

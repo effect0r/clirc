@@ -36,13 +36,25 @@ void CloseConnection(irc_connection *Connection)
 
 	Connection->IsConnected = 0;
 
-	free(Connection->Port);
-	free(Connection->Nick);
-	free(Connection->Server);
-	free(Connection->User);
-	free(Connection->Pass);
+	free(Connection->ConfigInfo.Port);
+	free(Connection->ConfigInfo.Nick);
+	free(Connection->ConfigInfo.Server);
+	free(Connection->ConfigInfo.User);
+	free(Connection->ConfigInfo.Pass);
 	fclose(Connection->OutStream);
 }
+
+static int callback(void *data, int argc, char **argv, char**azColName)
+{
+	irc_connection *Conn = (irc_connection*)data;
+	for (int i = 0; i < argc; ++i)
+	{
+		printf("%s = %s\n", azColName[i],argv[i]?argv[i]:"NULL");
+	}
+	printf("\n");
+	return 0;
+}
+
 void ParseMessage(irc_connection *Connection, char *Message)
 {
 	char *Command;
@@ -63,45 +75,62 @@ void ParseMessage(irc_connection *Connection, char *Message)
 		{
 			return;
 		}
-		*Command = '\0';
-		Command++;
+		*Command++ = '\0';
 		Parameters = strchr(Command, ' ');
 		if (Parameters)
 		{
-			*Parameters = '\0';
-			Parameters++;
+			*Parameters++ = '\0';
 		}
 		char *FromNick = HostName;
 		char *ident = strchr(FromNick, '!');
 		if (ident)
 		{
-			*ident = '\0';
-			ident++;
+			*ident++ = '\0';
 		}
 
 		if (!strcmp(Command, "PRIVMSG"))
 		{
 			char *text = strchr(Parameters, ':');
-			*text = '\0';
-			text++;
+			*text++ = '\0';
 			if (!strcmp(FromNick, "effect0r"))
 			{
 				if (text[0] == Connection->ConfigInfo.CommandPrefix)
 				{
-					*text = '\0';
-					text++;
+					*text++ = '\0';
 					char *Param = strchr(text, ' ');
 					if (Param)
 					{
-						*Param = '\0';
-						Param++;
+						*Param++ = '\0';
 					}
-					int CommandNumber = MapSearch(Connection->Map, text);
+					int CommandNumber = MapSearch(Connection->ConfigInfo.FaqCommandsMap, text);
 					if (CommandNumber >= 0)
 					{
 						//stuff
-						char *MessageToSend = Connection->Map->Pairs[CommandNumber].Value;
+						char *MessageToSend = Connection->ConfigInfo.FaqCommandsMap->Pairs[CommandNumber].Value;
 						SendMessage(Connection, "#effect0r", MessageToSend);
+					}
+					else
+					{
+						if (!strcmp(text, "quote"))
+						{
+							char Query[256];
+							char *Start = "SELECT * FROM quote WHERE id=";
+							strcpy(Query, Start);
+							strcat(Query, Param);
+
+							char *ErrorMsg = 0;
+							int rc = sqlite3_exec(Connection->ConfigInfo.QuoteList, Query, callback, (void*)Connection, &ErrorMsg);
+							if (rc != SQLITE_OK) 
+							{
+								//error
+								sqlite3_free(ErrorMsg);
+							}
+							else
+							{
+								//success
+							}
+							SendMessage(Connection, "#effect0r", Query);
+						}
 					}
 
 				}
@@ -178,9 +207,9 @@ int Connect(irc_connection *Connection)
 	ZERO(&Connection->Hints, Connection->Hints);
 	Connection->Hints.ai_family = AF_UNSPEC;
 	Connection->Hints.ai_socktype = SOCK_STREAM;
-	if ((strlen(Connection->Port) > 0) && (strlen(Connection->Port) < 0xFFFF))
+	if ((strlen(Connection->ConfigInfo.Port) > 0) && (strlen(Connection->ConfigInfo.Port) < 0xFFFF))
 	{
-		Connection->Status = getaddrinfo(Connection->Server, Connection->Port, 
+		Connection->Status = getaddrinfo(Connection->ConfigInfo.Server, Connection->ConfigInfo.Port, 
 										 &Connection->Hints, &Connection->ServerInfo);
 	}
 	else
@@ -202,9 +231,9 @@ int Connect(irc_connection *Connection)
 			{
 				Connection->IsConnected = 1;
 
-				fprintf(Connection->OutStream, "PASS %s\r\n", Connection->Pass);
-				fprintf(Connection->OutStream, "NICK %s\r\n", Connection->Nick);
-				fprintf(Connection->OutStream, "USER %s * 0 :%s\r\n", Connection->User, Connection->Nick);
+				fprintf(Connection->OutStream, "PASS %s\r\n", Connection->ConfigInfo.Pass);
+				fprintf(Connection->OutStream, "NICK %s\r\n", Connection->ConfigInfo.Nick);
+				fprintf(Connection->OutStream, "USER %s * 0 :%s\r\n", Connection->ConfigInfo.User, Connection->ConfigInfo.Nick);
 				fflush(Connection->OutStream);
 			}
 			else
