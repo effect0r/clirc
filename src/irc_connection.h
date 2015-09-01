@@ -16,10 +16,10 @@ struct map
 
 struct server_data
 {
-    char *nick;
-    char *ident;
-    char *host;
-    char *target;
+	char *nick;
+	char *ident;
+	char *host;
+	char *target;
 };
 
 struct quote_list
@@ -37,10 +37,10 @@ struct config_info
 	int WhiteListCount;
 	char **WhiteList;
 	char *Port;
-    char *Nick;
-    char *Server;
-    char *User;
-    char *Pass;
+	char *Nick;
+	char *Server;
+	char *User;
+	char *Pass;
 	map *FaqCommandsMap;
 	quote_list QuoteList;
 };
@@ -48,13 +48,13 @@ struct config_info
 struct irc_connection
 {
 	config_info ConfigInfo;
-   
-    //NOTE: connection info
-    int IsConnected;
-    struct addrinfo Hints, *ServerInfo;
-    int Status;
-    int Socket;
-    FILE *OutStream;
+
+	//NOTE: connection info
+	int IsConnected;
+	struct addrinfo Hints, *ServerInfo;
+	int Status;
+	int Socket;
+	FILE *OutStream;
 };
 
 #endif

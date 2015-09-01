@@ -1,11 +1,3 @@
-/* ========================================================================
-   $File: $
-   $Date: $
-   $Revision: $
-   $Creator: Cory Henderlite $
-   $Notice: $
-   ==========================================================================*/
-
 #include "irc_connection.h"
 
 void JoinChannel(irc_connection *Connection, char *Channel)
@@ -60,7 +52,7 @@ static int SelectQuote(void *data, int NumArgs, char **Rows, char **Columns)
 	char *QuoteText = 0;
 
 	struct tm tv;
-	memset(&tv, 0, sizeof(struct tm));
+	ZERO(&tv, struct tm);
 
 	for (int i = 0; i < NumArgs; ++i)
 	{
@@ -260,7 +252,7 @@ int Connect(irc_connection *Connection)
 	if ((strlen(Connection->ConfigInfo.Port) > 0) && (strlen(Connection->ConfigInfo.Port) < 0xFFFF))
 	{
 		Connection->Status = getaddrinfo(Connection->ConfigInfo.Server, Connection->ConfigInfo.Port, 
-										 &Connection->Hints, &Connection->ServerInfo);
+				&Connection->Hints, &Connection->ServerInfo);
 	}
 	else
 	{
