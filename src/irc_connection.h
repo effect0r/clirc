@@ -34,6 +34,7 @@ struct config_info
 	char **ChannelList;
 	char CommandPrefix;
 	char *Admin;
+	char *ConfigFileName;
 	int WhiteListCount;
 	char **WhiteList;
 	char *Port;

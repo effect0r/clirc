@@ -30,8 +30,8 @@ void MapInsert(map *Map, char *Key, char *Value)
 	InsertPair.Key = STRINGALLOC(Key);
 	InsertPair.Value = STRINGALLOC(Value);
 
-	memcpy(InsertPair.Key, Key, strlen(Key));
-	memcpy(InsertPair.Value, Value, strlen(Value));
+	strcpy(InsertPair.Key, Key);
+	strcpy(InsertPair.Value, Value);
 
 	if (Map->Used == Map->Size)
 	{
@@ -66,6 +66,7 @@ int CharCount(char *String, char Check)
 	return Result;
 }
 
+void OpenFile(irc_connection *Conn, char *Filename);
 #include "irc_connection.cpp"
 
 static int CountQuery(void *data, int NumArgs, char **Rows, char **Columns)
@@ -84,7 +85,7 @@ static int CountQuery(void *data, int NumArgs, char **Rows, char **Columns)
 	return 0;
 }
 
-void OpenFile(char *FileName, irc_connection *Conn)
+void OpenFile(irc_connection *Conn, char *FileName)
 {
 	struct stat Stats;
 	int descriptor = open(FileName, O_RDONLY);
@@ -95,6 +96,8 @@ void OpenFile(char *FileName, irc_connection *Conn)
 			char *FileData = (char*)mmap(0, Stats.st_size, PROT_READ, MAP_SHARED, descriptor, 0);
 			if (FileData)
 			{
+				Conn->ConfigInfo.ConfigFileName = (char*)malloc(sizeof(char) + strlen(FileName));
+				strcpy(Conn->ConfigInfo.ConfigFileName, FileName);
 				char *DataCopy = (char*)malloc(sizeof(char)*strlen(FileData));
 				memcpy(DataCopy, FileData, strlen(FileData)); 
 
@@ -140,7 +143,7 @@ void OpenFile(char *FileName, irc_connection *Conn)
 								}
 								Conn->ConfigInfo.ChannelCount = ChannelCount;
 								Conn->ConfigInfo.ChannelList[i] = STRINGALLOC(Items);
-								memcpy(Conn->ConfigInfo.ChannelList[i], Items, strlen(Items));
+								strcpy(Conn->ConfigInfo.ChannelList[i], Items);
 								Items = Chan;
 							}
 						}
@@ -151,32 +154,32 @@ void OpenFile(char *FileName, irc_connection *Conn)
 						else if (!strcmp(Header, "nick"))								
 						{
 							Conn->ConfigInfo.Nick = STRINGALLOC(Items);
-							memcpy(Conn->ConfigInfo.Nick, Items, strlen(Items));
+							strcpy(Conn->ConfigInfo.Nick, Items);
 						}
 						else if (!strcmp(Header, "server"))								
 						{
 							Conn->ConfigInfo.Server = STRINGALLOC(Items);
-							memcpy(Conn->ConfigInfo.Server, Items, strlen(Items));
+							strcpy(Conn->ConfigInfo.Server, Items);
 						}
 						else if (!strcmp(Header, "port"))
 						{
 							Conn->ConfigInfo.Port = STRINGALLOC(Items);
-							memcpy(Conn->ConfigInfo.Port, Items, strlen(Items));
+							strcpy(Conn->ConfigInfo.Port, Items);
 						}
 						else if (!strcmp(Header, "pass"))
 						{
 							Conn->ConfigInfo.Pass = STRINGALLOC(Items);
-							memcpy(Conn->ConfigInfo.Pass, Items, strlen(Items));
+							strcpy(Conn->ConfigInfo.Pass, Items);
 						}
 						else if (!strcmp(Header, "user"))
 						{
 							Conn->ConfigInfo.User = STRINGALLOC(Items);
-							memcpy(Conn->ConfigInfo.User, Items, strlen(Items));
+							strcpy(Conn->ConfigInfo.User, Items);
 						}
-						else if (!strcmp(Header, "admins"))
+						else if (!strcmp(Header, "admin"))
 						{
 							Conn->ConfigInfo.Admin = STRINGALLOC(Items);
-							memcpy(Conn->ConfigInfo.Admin, Items, strlen(Items));
+							strcpy(Conn->ConfigInfo.Admin, Items);
 						}
 						else if (!strcmp(Header, "whitelisted"))
 						{
@@ -193,7 +196,7 @@ void OpenFile(char *FileName, irc_connection *Conn)
 									*NextUser++ = '\0';
 								}
 								Conn->ConfigInfo.WhiteList[i] = STRINGALLOC(CurrentUser);
-								memcpy(Conn->ConfigInfo.WhiteList[i], CurrentUser, strlen(CurrentUser));
+								strcpy(Conn->ConfigInfo.WhiteList[i], CurrentUser);
 								CurrentUser = NextUser;
 							}
 						}
@@ -215,10 +218,6 @@ void OpenFile(char *FileName, irc_connection *Conn)
 								{
 									sqlite3_free(ErrorMsg);
 								}
-								else
-								{
-									//success
-								}
 							}
 						}
 						else if (!strcmp(Header, "infodb"))
@@ -227,7 +226,7 @@ void OpenFile(char *FileName, irc_connection *Conn)
 							struct stat InfoStats;
 							if (stat(Items, &InfoStats) != -1)
 							{
-								char *CommandsList= (char*)mmap(0, InfoStats.st_size, PROT_READ, MAP_SHARED, InfoDesc, 0);
+								char *CommandsList = (char*)mmap(0, InfoStats.st_size, PROT_READ, MAP_SHARED, InfoDesc, 0);
 								if (CommandsList)
 								{
 									char *ListCopy = (char*)malloc(sizeof(char)*strlen(CommandsList));
@@ -293,7 +292,7 @@ int main(int argc, char **argv)
 	irc_connection Conn = { 0 };
 	Conn.ConfigInfo.FaqCommandsMap = MapNew(10);
 
-	OpenFile(argv[1], &Conn);
+	OpenFile(&Conn, argv[1]);
 
 	Connect(&Conn);
 
