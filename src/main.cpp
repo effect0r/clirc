@@ -66,7 +66,7 @@ int CharCount(char *String, char Check)
 	return Result;
 }
 
-void OpenFile(irc_connection *Conn, char *Filename);
+void ProcessInfoDB(irc_connection*);
 #include "irc_connection.cpp"
 
 static int CountQuery(void *data, int NumArgs, char **Rows, char **Columns)
@@ -85,6 +85,61 @@ static int CountQuery(void *data, int NumArgs, char **Rows, char **Columns)
 	return 0;
 }
 
+void ProcessInfoDB(irc_connection *Connection)
+{
+	Connection->ConfigInfo.FaqCommandsMap = MapNew(10);
+	char *InfoFN = Connection->ConfigInfo.FaqCommandsFileName;
+	map *Map = Connection->ConfigInfo.FaqCommandsMap;
+
+	int InfoDesc = open(InfoFN, O_RDONLY);
+
+	struct stat InfoStats;
+	if (stat(InfoFN, &InfoStats) != -1)
+	{
+		char *CommandsList = (char*)mmap(0, InfoStats.st_size, PROT_READ, MAP_SHARED, InfoDesc, 0);
+		if (CommandsList)
+		{
+			char *ListCopy = (char*)malloc(sizeof(char)*strlen(CommandsList));
+			memcpy(ListCopy, CommandsList, strlen(CommandsList));
+
+			char *EndOfFile = &ListCopy[strlen(ListCopy)];
+			char *Words = ListCopy;
+			for (;;)
+			{
+				if (Words == EndOfFile)
+				{
+					break;
+				}
+				char *Spam = strchr(Words, '=');
+				if (Spam)
+				{
+					*Spam++ = '\0';
+				}
+				char *NextLine = strchr(Spam, '\n');
+				if (NextLine)
+				{
+					*NextLine++ = '\0';
+				}
+				int WordCount = CharCount(Words, ',') + 1;
+				for (int i = 0; i < WordCount; ++i)
+				{
+					char *Word = strchr(Words, ',');
+					if (Word)
+					{
+						*Word++ = '\0';
+					}
+					MapInsert(Map, Words, Spam);
+					Words = Word;
+				}
+				Words = NextLine;
+			}
+			free(ListCopy);
+			munmap(CommandsList, InfoStats.st_size);
+		}
+	}
+	close(InfoDesc);
+}
+
 void OpenFile(irc_connection *Conn, char *FileName)
 {
 	struct stat Stats;
@@ -96,8 +151,11 @@ void OpenFile(irc_connection *Conn, char *FileName)
 			char *FileData = (char*)mmap(0, Stats.st_size, PROT_READ, MAP_SHARED, descriptor, 0);
 			if (FileData)
 			{
-				Conn->ConfigInfo.ConfigFileName = (char*)malloc(sizeof(char) + strlen(FileName));
-				strcpy(Conn->ConfigInfo.ConfigFileName, FileName);
+				if (!Conn->ConfigInfo.ConfigFileName)
+				{
+					Conn->ConfigInfo.ConfigFileName = (char*)malloc(sizeof(char) + strlen(FileName));
+					strcpy(Conn->ConfigInfo.ConfigFileName, FileName);
+				}
 				char *DataCopy = (char*)malloc(sizeof(char)*strlen(FileData));
 				memcpy(DataCopy, FileData, strlen(FileData)); 
 
@@ -111,166 +169,122 @@ void OpenFile(irc_connection *Conn, char *FileName)
 					}
 
 					Items = strchr(Header, '=');
+					char *NewLine = strchr(Items, '\n');
 					if (Items)
 					{
 						*Items++ = '\0';
-					}
-					if (Items[0] == '\n')
-					{
-						//nothing here
-						*Items++ = '\0';
-						Header = Items;
-						continue;
-					}
-					else
-					{
-						char *NewLine = strchr(Items, '\n');
-						if (NewLine)
-						{
-							*NewLine++ = '\0';
-						}
-						if (!strcmp(Header, "channels"))
-						{
-							int ChannelCount = CharCount(Items, ',') + 1;
-							// NOTE(effect0r): Uh, make this better. Seriously.
-							Conn->ConfigInfo.ChannelList = (char **)malloc(sizeof(char)*ChannelCount);
-							for (int i = 0; i < ChannelCount; ++i)
-							{
-								char *Chan = strchr(Items, ',');
-								if (Chan)
-								{
-									*Chan++ = '\0';
-								}
-								Conn->ConfigInfo.ChannelCount = ChannelCount;
-								Conn->ConfigInfo.ChannelList[i] = STRINGALLOC(Items);
-								strcpy(Conn->ConfigInfo.ChannelList[i], Items);
-								Items = Chan;
-							}
-						}
-						else if (!strcmp(Header, "prefix"))								
-						{
-							Conn->ConfigInfo.CommandPrefix = Items[0];
-						}
-						else if (!strcmp(Header, "nick"))								
-						{
-							Conn->ConfigInfo.Nick = STRINGALLOC(Items);
-							strcpy(Conn->ConfigInfo.Nick, Items);
-						}
-						else if (!strcmp(Header, "server"))								
-						{
-							Conn->ConfigInfo.Server = STRINGALLOC(Items);
-							strcpy(Conn->ConfigInfo.Server, Items);
-						}
-						else if (!strcmp(Header, "port"))
-						{
-							Conn->ConfigInfo.Port = STRINGALLOC(Items);
-							strcpy(Conn->ConfigInfo.Port, Items);
-						}
-						else if (!strcmp(Header, "pass"))
-						{
-							Conn->ConfigInfo.Pass = STRINGALLOC(Items);
-							strcpy(Conn->ConfigInfo.Pass, Items);
-						}
-						else if (!strcmp(Header, "user"))
-						{
-							Conn->ConfigInfo.User = STRINGALLOC(Items);
-							strcpy(Conn->ConfigInfo.User, Items);
-						}
-						else if (!strcmp(Header, "admin"))
-						{
-							Conn->ConfigInfo.Admin = STRINGALLOC(Items);
-							strcpy(Conn->ConfigInfo.Admin, Items);
-						}
-						else if (!strcmp(Header, "whitelisted"))
-						{
-							char *CurrentUser = Items;
-							char *EndOfFile = strchr(Items, '\n');
-							int TotalUsers = CharCount(Items, ',') + 1;
-							Conn->ConfigInfo.WhiteListCount = TotalUsers;
-							Conn->ConfigInfo.WhiteList = (char**)malloc(sizeof(char) * TotalUsers);
-							for (int i = 0; i < TotalUsers; ++i)
-							{
-								char *NextUser = strchr(CurrentUser, ',');
-								if (NextUser)
-								{
-									*NextUser++ = '\0';
-								}
-								Conn->ConfigInfo.WhiteList[i] = STRINGALLOC(CurrentUser);
-								strcpy(Conn->ConfigInfo.WhiteList[i], CurrentUser);
-								CurrentUser = NextUser;
-							}
-						}
-						else if (!strcmp(Header, "quotedb"))
-						{
-							char *DbFilename = Items;
-							int rc = sqlite3_open(DbFilename, &Conn->ConfigInfo.QuoteList.QuoteDB);
-							if (rc)
-							{
-								//error
-							}
-							else 
-							{
-								printf("DB opened successfully\n");
-								char *ErrorMsg = 0;
-								char *Query = "SELECT count(*) FROM QUOTE;";
-								int rc = sqlite3_exec(Conn->ConfigInfo.QuoteList.QuoteDB, Query, CountQuery, (void*)Conn, &ErrorMsg);
-								if (rc != SQLITE_OK) 
-								{
-									sqlite3_free(ErrorMsg);
-								}
-							}
-						}
-						else if (!strcmp(Header, "infodb"))
-						{
-							int InfoDesc = open(Items, O_RDONLY);
-							struct stat InfoStats;
-							if (stat(Items, &InfoStats) != -1)
-							{
-								char *CommandsList = (char*)mmap(0, InfoStats.st_size, PROT_READ, MAP_SHARED, InfoDesc, 0);
-								if (CommandsList)
-								{
-									char *ListCopy = (char*)malloc(sizeof(char)*strlen(CommandsList));
-									memcpy(ListCopy, CommandsList, strlen(CommandsList));
 
-									char *EndOfFile = &ListCopy[strlen(ListCopy)];
-									char *Line = ListCopy;
-									for (;;)
+						if (Items[0] == '\n')
+						{
+							//nothing here
+							*Items++ = '\0';
+							Header = Items;
+							continue;
+						}
+						else
+						{
+							NewLine = strchr(Items, '\n');
+							if (NewLine)
+							{
+								*NewLine++ = '\0';
+							}
+							if (!strcmp(Header, "channels"))
+							{
+								int ChannelCount = CharCount(Items, ',') + 1;
+								// NOTE(effect0r): Uh, make this better. Seriously.
+								Conn->ConfigInfo.ChannelList = (char **)malloc(sizeof(char)*ChannelCount);
+								for (int i = 0; i < ChannelCount; ++i)
+								{
+									char *Chan = strchr(Items, ',');
+									if (Chan)
 									{
-										if (Line == EndOfFile)
-										{
-											break;
-										}
-										char *Spam = strchr(Line, '=');
-										if (Spam)
-										{
-											*Spam++ = '\0';
-										}
-										char *NextLine = strchr(Spam, '\n');
-										if (NextLine)
-										{
-											*NextLine++ = '\0';
-										}
-										int WordCount = CharCount(Line, ',') + 1;
-										for (int i = 0; i < WordCount; ++i)
-										{
-											char *Word = strchr(Line, ',');
-											if (Word)
-											{
-												*Word++ = '\0';
-											}
-											MapInsert(Conn->ConfigInfo.FaqCommandsMap, Line, Spam);
-											Line = Word;
-										}
-										Line = NextLine;
+										*Chan++ = '\0';
 									}
-									free(ListCopy);
-									munmap(CommandsList, InfoStats.st_size);
-									close(InfoDesc);
+									Conn->ConfigInfo.ChannelCount = ChannelCount;
+									Conn->ConfigInfo.ChannelList[i] = STRINGALLOC(Items);
+									strcpy(Conn->ConfigInfo.ChannelList[i], Items);
+									Items = Chan;
 								}
 							}
+							else if (!strcmp(Header, "prefix"))								
+							{
+								Conn->ConfigInfo.CommandPrefix = Items[0];
+							}
+							else if (!strcmp(Header, "nick"))								
+							{
+								Conn->ConfigInfo.Nick = STRINGALLOC(Items);
+								strcpy(Conn->ConfigInfo.Nick, Items);
+							}
+							else if (!strcmp(Header, "server"))								
+							{
+								Conn->ConfigInfo.Server = STRINGALLOC(Items);
+								strcpy(Conn->ConfigInfo.Server, Items);
+							}
+							else if (!strcmp(Header, "port"))
+							{
+								Conn->ConfigInfo.Port = STRINGALLOC(Items);
+								strcpy(Conn->ConfigInfo.Port, Items);
+							}
+							else if (!strcmp(Header, "pass"))
+							{
+								Conn->ConfigInfo.Pass = STRINGALLOC(Items);
+								strcpy(Conn->ConfigInfo.Pass, Items);
+							}
+							else if (!strcmp(Header, "user"))
+							{
+								Conn->ConfigInfo.User = STRINGALLOC(Items);
+								strcpy(Conn->ConfigInfo.User, Items);
+							}
+							else if (!strcmp(Header, "admin"))
+							{
+								Conn->ConfigInfo.Admin = STRINGALLOC(Items);
+								strcpy(Conn->ConfigInfo.Admin, Items);
+							}
+							else if (!strcmp(Header, "whitelisted"))
+							{
+								char *CurrentUser = Items;
+								char *EndOfFile = strchr(Items, '\n');
+								int TotalUsers = CharCount(Items, ',') + 1;
+								Conn->ConfigInfo.WhiteListCount = TotalUsers;
+								Conn->ConfigInfo.WhiteList = (char**)malloc(sizeof(char) * TotalUsers);
+								for (int i = 0; i < TotalUsers; ++i)
+								{
+									char *NextUser = strchr(CurrentUser, ',');
+									if (NextUser)
+									{
+										*NextUser++ = '\0';
+									}
+									Conn->ConfigInfo.WhiteList[i] = STRINGALLOC(CurrentUser);
+									strcpy(Conn->ConfigInfo.WhiteList[i], CurrentUser);
+									CurrentUser = NextUser;
+								}
+							}
+							else if (!strcmp(Header, "quotedb"))
+							{
+								char *DbFilename = Items;
+								int rc = sqlite3_open(DbFilename, &Conn->ConfigInfo.QuoteList.QuoteDB);
+								if (rc == SQLITE_OK)
+								{
+									printf("DB opened successfully\n");
+									char *ErrorMsg = 0;
+									char *Query = "SELECT count(*) FROM QUOTE;";
+									int rc = sqlite3_exec(Conn->ConfigInfo.QuoteList.QuoteDB, Query, CountQuery, (void*)Conn, &ErrorMsg);
+									if (rc != SQLITE_OK) 
+									{
+										sqlite3_free(ErrorMsg);
+									}
+								}
+							}
+							else if (!strcmp(Header, "infodb"))
+							{
+								Conn->ConfigInfo.FaqCommandsFileName = (char*)malloc(sizeof(char) * strlen(Items));
+								strcpy(Conn->ConfigInfo.FaqCommandsFileName, Items);
+
+								ProcessInfoDB(Conn);
+							}
 						}
-						Header = NewLine;
 					}
+					Header = NewLine;
 				}
 
 				munmap(FileData, Stats.st_size);
@@ -290,7 +304,6 @@ int main(int argc, char **argv)
 	}
 
 	irc_connection Conn = { 0 };
-	Conn.ConfigInfo.FaqCommandsMap = MapNew(10);
 
 	OpenFile(&Conn, argv[1]);
 

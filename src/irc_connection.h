@@ -42,6 +42,7 @@ struct config_info
 	char *Server;
 	char *User;
 	char *Pass;
+	char *FaqCommandsFileName;
 	map *FaqCommandsMap;
 	quote_list QuoteList;
 };

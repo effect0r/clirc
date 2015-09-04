@@ -35,65 +35,6 @@ void CloseConnection(irc_connection *Connection)
 	free(Connection->ConfigInfo.Pass);
 	fclose(Connection->OutStream);
 }
-#if 0
-static int SearchQuote(void *data, int NumArgs, char **Rows, char **Columns)
-{
-	irc_connection *Connection = (irc_connection*)data;
-	char *ID[Connection->ConfigInfo.QuoteList.TotalQuotes], *Text = 0, *Timestamp = 0;
-	int NumQuotes = 0;
-	for (int i = 0; i < NumArgs; ++i)
-	{
-		if (!strcmp(Columns[i], "id"))
-		{
-			ID[NumQuotes++] = Rows[i];
-		}
-		else if (!strcmp(Columns[i], "text"))
-		{
-			Text = Rows[i];
-		}
-		else if (!strcmp(Columns[i], "timestamp"))
-		{
-			Timestamp = Rows[i];
-		}
-	}
-
-	char Buffer[256];
-
-	if (NumQuotes)
-	{
-		if (NumQuotes == 1)
-		{
-			struct tm tv;
-			char FormattedTime[256];
-			ZERO(&tv, struct tm);
-	
-			strptime(Timestamp, "%s", &tv);
-			strftime(FormattedTime, sizeof(FormattedTime), "%d %b %Y", &tv);
-
-			sprintf(Buffer, "(#%s)\"%s\" --Casey, %s", ID[0], Text, FormattedTime);
-
-		}
-		else
-		{
-			char QuoteNums[256];
-			sprintf(QuoteNums, "Found %d quotes matching <search>:", NumQuotes);
-			for (int i = 0; i < NumQuotes; ++i)
-			{
-				strcat(QuoteNums, ID[i]);
-			}
-			strcpy(Buffer, QuoteNums);
-		}
-	}
-	else
-	{
-		sprintf(Buffer, "No quotes found.");
-	}
-	SendMessage(Connection, "#effect0r", Buffer); 
-
-
-	return 0;
-}
-#endif
 
 static int InsertQuote(void *data, int NumArgs, char **Rows, char **Columns)
 {
@@ -139,7 +80,18 @@ static int SelectQuote(void *data, int NumArgs, char **Rows, char **Columns)
 void RehashCommandsList(irc_connection *Connection)
 {
 	// TODO(cory): free the ConfigInfo within Connection, except ConfigFileName.
-	OpenFile(Connection, Connection->ConfigInfo.ConfigFileName);
+	config_info *Info = &Connection->ConfigInfo;
+
+	for (unsigned int i = 0; i < Info->FaqCommandsMap->Size; ++i)
+	{
+		pair *Current = Info->FaqCommandsMap->Pairs + i;
+		free(Current->Key);
+		free(Current->Value);
+	}
+
+	free(Info->FaqCommandsMap);
+
+	ProcessInfoDB(Connection);
 }
 
 void ParseMessage(irc_connection *Connection, char *Message)
