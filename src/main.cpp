@@ -54,11 +54,17 @@ void MapRemove(map *Map, char *Key)
 
 int CharCount(char *String, char Check)
 {
-	int Result = 0;
+	// NOTE(cory): 
+	// a,b,c,
+	// 	return 3
+	// a,b,c
+	// 	return 3
+	int Result = 1;
 	for (unsigned i = 0; i < strlen(String); ++i)
 	{
 		char At = String[i];
-		if (At == Check)
+		if ((At == Check) &&
+			(i != strlen(String)-1))
 		{
 			Result++;
 		}
@@ -106,11 +112,12 @@ void ProcessInfoDB(irc_connection *Connection)
 			char *Words = ListCopy;
 			for (;;)
 			{
-				if (Words == EndOfFile)
+				if ((Words == EndOfFile) ||
+					(Words[0] == '\n'))
 				{
 					break;
 				}
-				char *Spam = strchr(Words, '=');
+				char *Spam = strchr(Words, '\t');
 				if (Spam)
 				{
 					*Spam++ = '\0';
@@ -120,7 +127,7 @@ void ProcessInfoDB(irc_connection *Connection)
 				{
 					*NextLine++ = '\0';
 				}
-				int WordCount = CharCount(Words, ',') + 1;
+				int WordCount = CharCount(Words, ',');
 				for (int i = 0; i < WordCount; ++i)
 				{
 					char *Word = strchr(Words, ',');
@@ -190,7 +197,7 @@ void OpenFile(irc_connection *Conn, char *FileName)
 							}
 							if (!strcmp(Header, "channels"))
 							{
-								int ChannelCount = CharCount(Items, ',') + 1;
+								int ChannelCount = CharCount(Items, ',');
 								// NOTE(effect0r): Uh, make this better. Seriously.
 								Conn->ConfigInfo.ChannelList = (char **)malloc(sizeof(char)*ChannelCount);
 								for (int i = 0; i < ChannelCount; ++i)
@@ -244,7 +251,7 @@ void OpenFile(irc_connection *Conn, char *FileName)
 							{
 								char *CurrentUser = Items;
 								char *EndOfFile = strchr(Items, '\n');
-								int TotalUsers = CharCount(Items, ',') + 1;
+								int TotalUsers = CharCount(Items, ',');
 								Conn->ConfigInfo.WhiteListCount = TotalUsers;
 								Conn->ConfigInfo.WhiteList = (char**)malloc(sizeof(char) * TotalUsers);
 								for (int i = 0; i < TotalUsers; ++i)

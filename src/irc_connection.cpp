@@ -35,19 +35,22 @@ void CloseConnection(irc_connection *Connection)
 	free(Connection->ConfigInfo.Pass);
 	fclose(Connection->OutStream);
 }
-
+#if 0
 static int InsertQuote(void *data, int NumArgs, char **Rows, char **Columns)
 {
+	for (int i = 0; i < NumArgs; ++i)
+	{
+		printf("%s = %s", Columns[i], Rows[i] ? Rows[i] : "null");
+	}
 	return 0;
 }
-
 static int SelectQuote(void *data, int NumArgs, char **Rows, char **Columns)
 {
 	// NOTE(effect0r): (#1) Are you okay with that, Mr. Compiler? --Casey, 26 Feb 2015
 	irc_connection *Conn = (irc_connection*)data;
 	char Quote[256];
 	char FormattedTime[256];
-	char *ID = 0;
+	char *IDList = 0;
 	char *TimeStamp = 0;
 	char *QuoteText = 0;
 
@@ -62,7 +65,7 @@ static int SelectQuote(void *data, int NumArgs, char **Rows, char **Columns)
 		}
 		else if (!strcmp(Columns[i], "id"))
 		{
-			ID = Rows[i];
+			IDList = Rows[i];
 		}
 		else if (!strcmp(Columns[i], "text"))
 		{
@@ -71,18 +74,19 @@ static int SelectQuote(void *data, int NumArgs, char **Rows, char **Columns)
 	}
 	strptime(TimeStamp, "%s", &tv);
 	strftime(FormattedTime, sizeof(FormattedTime), "%d %b %Y", &tv);
-	sprintf(Quote, "(#%s) \"%s\" --Casey, %s", ID, QuoteText, FormattedTime);
+	sprintf(Quote, "(#%s) \"%s\" --Casey, %s", IDList, QuoteText, FormattedTime);
 
 	SendMessage(Conn, "#effect0r", Quote);
 	return 0;
 }
+#endif
 
 void RehashCommandsList(irc_connection *Connection)
 {
 	// TODO(cory): free the ConfigInfo within Connection, except ConfigFileName.
 	config_info *Info = &Connection->ConfigInfo;
 
-	for (unsigned int i = 0; i < Info->FaqCommandsMap->Size; ++i)
+	for (unsigned int i = 0; i < Info->FaqCommandsMap->Used; ++i)
 	{
 		pair *Current = Info->FaqCommandsMap->Pairs + i;
 		free(Current->Key);
@@ -151,9 +155,9 @@ void ParseMessage(irc_connection *Connection, char *Message)
 					{
 						SendMessage(Connection, "#effect0r", "Greetings meat popcicle! I'm an IRC bot written in c/c++ to help moderate this channel! For more commands, see the bot's \"commands\" command.");
 					}
-					else if (!strcmp(FromNick, Connection->ConfigInfo.Admin))
+					else if (!strcmp(text, "rehash"))
 					{
-						if (!strcmp(text, "rehash"))
+						if (!strcmp(FromNick, Connection->ConfigInfo.Admin))
 						{
 							RehashCommandsList(Connection);
 							SendMessage(Connection, "#effect0r", "Rehashing commands list... DONE!");
@@ -163,16 +167,60 @@ void ParseMessage(irc_connection *Connection, char *Message)
 					{
 						if (!strcmp(text, "quote"))
 						{
-							char Query[256];
-							char *Start = "SELECT * FROM quote WHERE id=";
-							strcpy(Query, Start);
-							strcat(Query, Param);
-
 							char *ErrorMsg = 0;
-							int rc = sqlite3_exec(Connection->ConfigInfo.QuoteList.QuoteDB, Query, SelectQuote, (void*)Connection, &ErrorMsg);
-							if (rc != SQLITE_OK) 
+							char *Query = sqlite3_mprintf("SELECT * FROM quote WHERE id='%q';", Param);
+							sqlite3_stmt *Statement;
+
+							int Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
+							if (Result == SQLITE_OK) 
 							{
-								//error
+								char *IDList = 0, *Text = 0, *Time = 0;
+								do
+								{
+									Result = sqlite3_step(Statement);
+									if (Result == SQLITE_ROW)
+									{
+										char *Temp = (char*)malloc(sizeof(char) * 1024);
+
+										strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
+										IDList = (char*)malloc(sizeof(char) * strlen(Temp)+1);
+										strcpy(IDList, Temp);
+
+										strcpy(Temp, (char*)sqlite3_column_text(Statement, 1));
+										Text = (char*)malloc(sizeof(char) * strlen(Temp)+1);
+										strcpy(Text, Temp);
+
+										strcpy(Temp, (char*)sqlite3_column_text(Statement, 2));
+										Time = (char*)malloc(sizeof(char) * strlen(Temp)+1);
+										strcpy(Time, Temp);
+
+										free(Temp);
+
+									}
+								} while(Result == SQLITE_ROW);
+
+								if (IDList && Text && Time)
+								{
+									struct tm tv;
+									ZERO(&tv, struct tm);
+									char FormattedTime[256];
+									char Message[1024];
+									
+									strptime(Time, "%s", &tv);
+									strftime(FormattedTime, sizeof(FormattedTime), "%d %b %Y", &tv);
+									sprintf(Message, "(#%s) \"%s\" --Casey, %s", IDList, Text, FormattedTime);
+
+									SendMessage(Connection, "#effect0r", Message);
+								}
+								else 
+								{
+									char Message[256];
+									sprintf(Message, "No quote with IDList=%s", Param);
+									SendMessage(Connection, "#effect0r", Message);
+								}
+							}
+							else
+							{
 								sqlite3_free(ErrorMsg);
 							}
 						}
@@ -182,21 +230,45 @@ void ParseMessage(irc_connection *Connection, char *Message)
 							time_t Now = time(0);
 							char CurrentTime[256];
 							snprintf(CurrentTime, sizeof(CurrentTime), "%lu", Now);
+							sqlite3_stmt *Statement;
 
-							char *Query = sqlite3_mprintf("INSERT INTO quote (text,timestamp) VALUES ('%q','%q')", Param, CurrentTime);
-							int rc = sqlite3_exec(Connection->ConfigInfo.QuoteList.QuoteDB, Query, InsertQuote, (void*)Connection, &ErrorMsg);
-							if (rc != SQLITE_OK)
+							char *Query = sqlite3_mprintf("INSERT INTO quote (text,timestamp) VALUES ('%q','%q');", Param, CurrentTime);
+							int Result = sqlite3_exec(Connection->ConfigInfo.QuoteList.QuoteDB, Query, 0, 0, &ErrorMsg);
+							if (Result == SQLITE_OK)
 							{
+								Query = sqlite3_mprintf("SELECT id FROM quote WHERE timestamp='%q';", CurrentTime);
+								Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
+								if (Result == SQLITE_OK)
+								{
+									char *IDList = 0;
+									do
+									{
+										Result = sqlite3_step(Statement);
+										if (Result == SQLITE_ROW)
+										{
+											char *Temp = (char*)malloc(sizeof(char)*128);
+											strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
+											IDList = (char*)malloc(sizeof(char)*strlen(Temp)+1);
+											strcpy(IDList, Temp);
+											free(Temp);
+										}
+									} while (Result == SQLITE_ROW);
+
+									if (IDList)
+									{
+										char Msg[256];
+										sprintf(Msg, "Added quote IDList=%s", IDList);
+										SendMessage(Connection, "#effect0r", Msg); 
+									}
+								}
+							}
+							else 
+							{
+								//failed to insert
 								sqlite3_free(ErrorMsg);
 							}
-							else
-							{
-								char Buffer[32];
-								snprintf(Buffer, sizeof(Buffer), "Added as !quote %d", ++Connection->ConfigInfo.QuoteList.TotalQuotes);
-								SendMessage(Connection, "#effect0r", Buffer);
-							}
 						}
-						else if (!strcmp(text, "search"))
+						else if (!strcmp(text, "searchquote"))
 						{
 							char *ErrorMsg = 0;
 							char *Query = sqlite3_mprintf("SELECT * FROM quote where text LIKE '%%%q%%'", Param);
@@ -205,9 +277,9 @@ void ParseMessage(irc_connection *Connection, char *Message)
 							int Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
 							if (Result == SQLITE_OK)
 							{
-								char *ID[256];
-								char *Text[256];
-								char *Time[256];
+								char *IDList[1024];
+								char *TextList[1024];
+								char *TimeList[1024];
 
 								int Position = 0;
 
@@ -216,26 +288,26 @@ void ParseMessage(irc_connection *Connection, char *Message)
 									Result = sqlite3_step(Statement);
 									if (Result == SQLITE_ROW)
 									{
-										char *Temp = (char*)malloc(256);
+										char *Temp = (char*)malloc(sizeof(char) *1024);
 
 										strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
-										ID[Position] = (char*)malloc(strlen(Temp));
-										strcpy(ID[Position], Temp);
-										
+										IDList[Position] = (char*)malloc(strlen(Temp)+1);
+										strcpy(IDList[Position], Temp);
+
 										strcpy(Temp, (char*)sqlite3_column_text(Statement, 1));
-										Text[Position] = (char*)malloc(strlen(Temp));
-										strcpy(Text[Position], Temp);
+										TextList[Position] = (char*)malloc(strlen(Temp)+1);
+										strcpy(TextList[Position], Temp);
 
 										strcpy(Temp, (char*)sqlite3_column_text(Statement, 2));
-										Time[Position] = (char*)malloc(strlen(Temp));
-										strcpy(Time[Position], Temp);
+										TimeList[Position] = (char*)malloc(strlen(Temp)+1);
+										strcpy(TimeList[Position], Temp);
 
 										++Position;
 										free(Temp);
 									}
 								} while (Result == SQLITE_ROW);
 
-								char Buffer[256];
+								char Buffer[1024];
 								if (Position)
 								{
 									if (Position == 1)
@@ -243,23 +315,23 @@ void ParseMessage(irc_connection *Connection, char *Message)
 										struct tm tv;
 										char FormattedTime[256];
 										ZERO(&tv, struct tm);
-	
-										strptime(Time[0], "%s", &tv);
+
+										strptime(TimeList[0], "%s", &tv);
 										strftime(FormattedTime, sizeof(FormattedTime), "%d %b %Y", &tv);
 
-										sprintf(Buffer, "(#%s)\"%s\" --Casey, %s", ID[0], Text[0], FormattedTime);
+										sprintf(Buffer, "(#%s)\"%s\" --Casey, %s", IDList[0], TextList[0], FormattedTime);
 									}
 									else
 									{
-										char QuoteNums[256];
-										strcpy(QuoteNums, ID[0]);
+										char QuoteNums[1024];
+										strcpy(QuoteNums, IDList[0]);
 										for (int i = 1; i < Position; ++i)
 										{
 											char Temp[16];
-											sprintf(Temp, ", %s", ID[i]);
+											sprintf(Temp, ", %s", IDList[i]);
 											strcat(QuoteNums, Temp);
 										}
-	
+
 										sprintf(Buffer, "Found %d quotes containing string %s: %s", Position, Param, QuoteNums);
 									}
 								}
@@ -272,9 +344,53 @@ void ParseMessage(irc_connection *Connection, char *Message)
 								// NOTE(cory): Cleanup.
 								for (int i = 0; i < Position; ++i)
 								{
-									free(ID[i]);
-									free(Text[i]);
-									free(Time[i]);
+									free(IDList[i]);
+									free(TextList[i]);
+									free(TimeList[i]);
+								}
+							}
+						}
+						else if(!strcmp(text, "delquote"))
+						{
+							char *ErrorMsg = 0;
+							char *Query = sqlite3_mprintf("SELECT text FROM quote WHERE IDList='%q'", Param);
+							sqlite3_stmt *Statement;
+
+							int Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
+							if (Result == SQLITE_OK)
+							{
+								char *QuoteText = 0;
+								do
+								{
+									Result = sqlite3_step(Statement);
+									if (Result == SQLITE_ROW)
+									{
+										char *Temp = (char*)malloc(1024);
+
+										strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
+										QuoteText = (char*)malloc(strlen(Temp));
+										strcpy(QuoteText, Temp);
+
+										free(Temp);
+									}
+								} while (Result == SQLITE_ROW);
+
+								if (QuoteText)
+								{
+									// NOTE(cory): Quote exists because QuoteText has data.
+									Query = sqlite3_mprintf("DELETE FROM quote WHERE id='%q'", Param);
+									if (sqlite3_exec(Connection->ConfigInfo.QuoteList.QuoteDB, Query, 0, 0, &ErrorMsg) == SQLITE_OK)
+									{
+										char Msg[256];
+										sprintf(Msg, "Deleted quote IDList=%s", Param);
+										SendMessage(Connection, "#effect0r", Msg); 
+									}
+								}
+								else
+								{
+									char Message[256];
+									sprintf(Message, "Quote IDList=%s does not exist.", Param);
+									SendMessage(Connection, "#effect0r", Message);
 								}
 							}
 						}
