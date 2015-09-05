@@ -109,40 +109,45 @@ void ProcessInfoDB(irc_connection *Connection)
 			memcpy(ListCopy, CommandsList, strlen(CommandsList));
 
 			char *EndOfFile = &ListCopy[strlen(ListCopy)];
-			char *Words = ListCopy;
+			char *Line = ListCopy;
 			for (;;)
 			{
-				if ((Words == EndOfFile) ||
-					(Words[0] == '\n'))
+				if (Line == EndOfFile)
 				{
 					break;
 				}
-				char *Spam = strchr(Words, '\t');
-				if (Spam)
+				char *Words = Line;
+				char *MessageToSend = strchr(Line, '\t');
+				char *NextLine = strchr(Line, '\n');
+				if (MessageToSend)
 				{
-					*Spam++ = '\0';
+					*MessageToSend++ = '\0';
 				}
-				char *NextLine = strchr(Spam, '\n');
 				if (NextLine)
 				{
 					*NextLine++ = '\0';
 				}
-				int WordCount = CharCount(Words, ',');
+				int WordCount = CharCount(Line, ',');
+				
 				for (int i = 0; i < WordCount; ++i)
 				{
-					char *Word = strchr(Words, ',');
-					if (Word)
+					char *NextWord = strchr(Words, ',');
+					if (NextWord)
 					{
-						*Word++ = '\0';
+						*NextWord++ = '\0';
 					}
-					MapInsert(Map, Words, Spam);
-					Words = Word;
+					MapInsert(Map, Words, MessageToSend);
+					Words = NextWord;
 				}
-				Words = NextLine;
+				Line = NextLine;
+				while(*Line == '\n')
+				{
+					Line++;
+				}
 			}
 			free(ListCopy);
-			munmap(CommandsList, InfoStats.st_size);
 		}
+		munmap(CommandsList, InfoStats.st_size);
 	}
 	close(InfoDesc);
 }
