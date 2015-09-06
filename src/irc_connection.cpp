@@ -41,11 +41,21 @@ void RehashCommandsList(irc_connection *Connection)
 	// TODO(cory): free the ConfigInfo within Connection, except ConfigFileName.
 	config_info *Info = &Connection->ConfigInfo;
 
+	char *ValueAddress = 0;
 	for (unsigned int i = 0; i < Info->FaqCommandsMap->Used; ++i)
 	{
 		pair *Current = Info->FaqCommandsMap->Pairs + i;
-		free(Current->Key);
-		free(Current->Value);
+		if (Current->Key)
+		{
+			free(Current->Key);
+			Current->Key = 0;
+		}
+		if (Current->Value && (ValueAddress != Current->Value))
+		{
+			free(Current->Value);
+			ValueAddress = Current->Value;
+			Current->Value = 0;
+		}
 	}
 
 	free(Info->FaqCommandsMap);
@@ -179,6 +189,100 @@ void ParseMessage(irc_connection *Connection, char *Message)
 								sqlite3_free(ErrorMsg);
 							}
 						}
+						else if (!strcmp(text, "fixquotetime"))
+						{
+							// NOTE(cory): fixquotetime 01 jan 2015
+							char *Time = 0;
+							char *ID = 0;
+							char Buffer[256];
+							struct tm tv;
+							ZERO(&tv, struct tm);
+
+							if (Param)
+							{
+								ID = Param;
+								Time = strchr(Param, ' ');
+								int IDCheck = atoi(ID);
+								if (IDCheck > 0)
+								{
+									if (Time)
+									{
+										*Time++ = '\0';
+										if (strptime(Time, "%d %b %Y", &tv))										
+										{
+											time_t EpochTime = mktime(&tv);
+											char *ErrorMsg = 0;
+											char TimeAsString[256];
+											snprintf(TimeAsString, sizeof(TimeAsString), "%lu", EpochTime);
+
+											char *Query = sqlite3_mprintf("UPDATE quote SET timestamp='%q' WHERE id='%q';", TimeAsString, ID);
+
+											int Result = sqlite3_exec(Connection->ConfigInfo.QuoteList.QuoteDB, Query, 0, 0, &ErrorMsg);
+											if (Result == SQLITE_OK)
+											{
+												sqlite3_stmt *Statement;
+												Query = sqlite3_mprintf("SELECT timestamp FROM quote WHERE id='%q';", ID);
+												int Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
+												if (Result == SQLITE_OK)
+												{
+													char *Timestamp = 0;
+													do 
+													{
+														Result = sqlite3_step(Statement);
+														if (Result == SQLITE_ROW)
+														{
+															char *Temp = (char*)malloc(sizeof(char) * 1024);
+
+															strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
+															Timestamp = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
+															strcpy(Timestamp, Temp);
+
+															free(Temp);
+														}
+													} while (Result == SQLITE_ROW);
+
+													if (Timestamp)
+													{
+														char FormattedTime[256];
+
+														strptime(Timestamp, "%s", &tv);
+														strftime(FormattedTime, sizeof(FormattedTime), "%d %b %Y", &tv);
+
+														snprintf(Buffer, sizeof(Buffer), "Quote %s moved to date: %s", ID, FormattedTime);
+													}
+												}
+											}
+											else
+											{
+												sqlite3_free(ErrorMsg);
+											}
+										}
+										else
+										{
+											//invalid format
+											snprintf(Buffer, sizeof(Buffer), "You must provide a date in the formate <dd> <Mon(th)> <yyyy>");
+										}
+									}
+									else
+									{
+										//invalid id
+										snprintf(Buffer, sizeof(Buffer), "You must provide a time to change ID to.");
+									}
+								}
+								else
+								{
+									//no time given
+									snprintf(Buffer, sizeof(Buffer), "You must provide a valid ID.");
+								}
+							}
+							else 
+							{
+								//no string given
+								snprintf(Buffer, sizeof(Buffer), "Usage: fixquotetime <id> <dd> <Mon(th)> <yyyy>");
+							}
+
+							SendMessage(Connection, "#effect0r", Buffer);
+						}
 						else if (!strcmp(text, "fixquote"))
 						{
 							char *ID = 0;
@@ -198,13 +302,13 @@ void ParseMessage(irc_connection *Connection, char *Message)
 										*Update++ = '\0';
 
 										char *Query = sqlite3_mprintf("UPDATE quote SET text='%q' WHERE id='%q';", Update, ID);
-										
+
 										int Result = sqlite3_exec(Connection->ConfigInfo.QuoteList.QuoteDB, Query, 0, 0, &ErrorMsg);
 										if (Result == SQLITE_OK)
 										{
 											sqlite3_stmt *Statement;
 											Query = sqlite3_mprintf("SELECT id FROM quote WHERE id='%q';", ID);
-											
+
 											int Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
 											if (Result == SQLITE_OK)
 											{
@@ -215,11 +319,11 @@ void ParseMessage(irc_connection *Connection, char *Message)
 													if (Result == SQLITE_ROW)
 													{
 														char *Temp = (char*)malloc(sizeof(char)*1024);
-														
+
 														strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
 														ResultID = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
 														strcpy(ResultID, Temp);
-														
+
 														free(Temp);
 													}
 												} while (Result == SQLITE_ROW);
@@ -270,7 +374,7 @@ void ParseMessage(irc_connection *Connection, char *Message)
 								Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
 								if (Result == SQLITE_OK)
 								{
-									char *IDList = 0;
+									char *ID = 0;
 									do
 									{
 										Result = sqlite3_step(Statement);
@@ -278,16 +382,16 @@ void ParseMessage(irc_connection *Connection, char *Message)
 										{
 											char *Temp = (char*)malloc(sizeof(char) * 128);
 											strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
-											IDList = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
-											strcpy(IDList, Temp);
+											ID = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
+											strcpy(ID, Temp);
 											free(Temp);
 										}
 									} while (Result == SQLITE_ROW);
 
-									if (IDList)
+									if (ID)
 									{
 										char Msg[256];
-										snprintf(Msg, sizeof(Msg),  "Added quote IDList=%s", IDList);
+										snprintf(Msg, sizeof(Msg),  "Added quote ID=%s", ID);
 										SendMessage(Connection, "#effect0r", Msg); 
 									}
 								}

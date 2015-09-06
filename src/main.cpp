@@ -27,11 +27,8 @@ int MapSearch(map *Map, char *Key)
 void MapInsert(map *Map, char *Key, char *Value)
 {
 	pair InsertPair;
-	InsertPair.Key = STRINGALLOC(Key);
-	InsertPair.Value = STRINGALLOC(Value);
-
-	strcpy(InsertPair.Key, Key);
-	strcpy(InsertPair.Value, Value);
+	InsertPair.Key = Key;
+	InsertPair.Value = Value;
 
 	if (Map->Used == Map->Size)
 	{
@@ -44,12 +41,6 @@ void MapInsert(map *Map, char *Key, char *Value)
 	}
 
 	Map->Pairs[Map->Used++] = InsertPair;
-}
-
-void MapRemove(map *Map, char *Key)
-{
-	int Position = MapSearch(Map, Key);
-	Map->Pairs[Position] = Map->Pairs[Map->Used--];
 }
 
 int CharCount(char *String, char Check)
@@ -128,6 +119,9 @@ void ProcessInfoDB(irc_connection *Connection)
 					*NextLine++ = '\0';
 				}
 				int WordCount = CharCount(Line, ',');
+
+				char *InsertMsg = (char*)malloc(sizeof(char) * (strlen(MessageToSend) + 1));
+				strcpy(InsertMsg, MessageToSend);
 				
 				for (int i = 0; i < WordCount; ++i)
 				{
@@ -136,7 +130,9 @@ void ProcessInfoDB(irc_connection *Connection)
 					{
 						*NextWord++ = '\0';
 					}
-					MapInsert(Map, Words, MessageToSend);
+					char *InsertWord = (char*)malloc(sizeof(char) * (strlen(Words) + 1));
+					strcpy(InsertWord, Words);
+					MapInsert(Map, InsertWord, InsertMsg);
 					Words = NextWord;
 				}
 				Line = NextLine;
