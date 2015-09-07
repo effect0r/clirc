@@ -22,29 +22,20 @@ struct server_data
 	char *target;
 };
 
-struct quote_list
-{
-	unsigned int TotalQuotes;
-	sqlite3 *QuoteDB; 
-};
-
 struct config_info
 {
-	int ChannelCount;
-	char **ChannelList;
+	// NOTE(cory): This stuff is within a separate section of the config file, denoted by a channel name. Support for 256 channels currently. May change.
+	int AdminCount;
+	char *Admins[256];
 	char CommandPrefix;
-	char *Admin;
-	char *ConfigFileName;
-	int WhiteListCount;
-	char **WhiteList;
+	sqlite3 *Database;
+
+	// NOTE(cory): This stuff is within the core section
 	char *Port;
 	char *Nick;
 	char *Server;
 	char *User;
 	char *Pass;
-	char *FaqCommandsFileName;
-	map *FaqCommandsMap;
-	quote_list QuoteList;
 };
 
 struct irc_connection

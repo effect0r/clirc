@@ -1,4 +1,25 @@
+/*
+ *TODO(effect0r):
+ - Restructure the database such that the following is possible.
+ - Move everything to the database except what's in the core config
+ - Have a 'main' channel (the bot's name) be a general administration channel
+ - Within this channel:
+ - Add other users' channel to the bots list.
+ - Set them to the admin of that channel.
+ - Within the users' channel:
+ - Add in trigger-spam pairs based on network and channel, and permisions.
+ - Set up whitelisted users for specific commands.
+ */
 #include "irc_connection.h"
+
+void PartChannel(irc_connection *Connection, char *Channel)
+{
+	if (Connection->IsConnected)
+	{
+		fprintf(Connection->OutStream, "PART %s\r\n", Channel);
+		fflush(Connection->OutStream);
+	}
+}
 
 void JoinChannel(irc_connection *Connection, char *Channel)
 {
@@ -36,21 +57,22 @@ void CloseConnection(irc_connection *Connection)
 	fclose(Connection->OutStream);
 }
 
-void RehashCommandsList(irc_connection *Connection)
+#if 0
+void RehashCommandsList(irc_connection *Connection, int ChannelNumber)
 {
-	// TODO(cory): free the ConfigInfo within Connection, except ConfigFileName.
-	config_info *Info = &Connection->ConfigInfo;
+	config_info *Info = &Connection->ConfigInfo.ChannelList[ChannelNumber];
+	char *FileName = Info->TriggersFileName;
 
 	char *ValueAddress = 0;
-	for (unsigned int i = 0; i < Info->FaqCommandsMap->Used; ++i)
+	for (unsigned int i = 0; i < Info->TriggerMap.Used; ++i)
 	{
-		pair *Current = Info->FaqCommandsMap->Pairs + i;
+		pair *Current = &Info->TriggerMap.Pairs[i];
 		if (Current->Key)
 		{
 			free(Current->Key);
 			Current->Key = 0;
 		}
-		if (Current->Value && (ValueAddress != Current->Value))
+		if (Current->Value && (Current->Value != ValueAddress ))
 		{
 			free(Current->Value);
 			ValueAddress = Current->Value;
@@ -58,9 +80,240 @@ void RehashCommandsList(irc_connection *Connection)
 		}
 	}
 
-	free(Info->FaqCommandsMap);
+	free(Info->TriggerMap.Pairs);
 
-	ProcessInfoDB(Connection);
+	ProcessChannelTriggers(Connection, ChannelNumber, FileName);
+}
+#endif
+
+char* SqliteFindChannelID(sqlite3 *Database, char *Name)
+{
+	char *ErrorMsg = 0;
+	char *Spam = 0;
+
+	sqlite3_stmt *Statement;
+	char *Query = sqlite3_mprintf("SELECT id FROM channels WHERE name LIKE '%q'", Name);
+	int Result = sqlite3_prepare_v2(Database, Query, strlen(Query) + 1, &Statement, 0);
+	if (Result == SQLITE_OK)
+	{
+		Spam = 0;
+		do 
+		{
+			Result = sqlite3_step(Statement);
+			if (Result == SQLITE_ROW)
+			{
+				char *Temp = (char*)malloc(sizeof(char) * 1024);
+
+				strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
+				Spam = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
+				strcpy(Spam, Temp);
+
+				free(Temp);
+			}
+		} while (Result == SQLITE_ROW);
+	}
+	if (Spam)
+	{
+		return Spam;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+int SqliteRemoveChannel(sqlite3 *Database, char *Name)
+{
+	char *ChannelID = 0;
+	char *ErrorMsg = 0;
+	ChannelID = SqliteFindChannelID(Database, Name);
+	if (ChannelID)
+	{
+		char *Query = sqlite3_mprintf("DELETE FROM channels WHERE id='%q'", ChannelID);
+
+		int Result = sqlite3_exec(Database, Query, 0, 0, &ErrorMsg);
+		if (Result == SQLITE_OK)
+		{
+			return 1;
+		}
+		else
+		{
+			sqlite3_free(ErrorMsg);
+		}
+		free(ChannelID);
+	}
+	return 0;
+}
+	
+char* SqliteFindTriggerID(sqlite3 *Database, char *TriggerWord)
+{
+	char *ErrorMsg = 0;
+	char *Spam = 0;
+
+	sqlite3_stmt *Statement;
+	char *Query = sqlite3_mprintf("SELECT id FROM triggers WHERE trigger LIKE '%q'", TriggerWord);
+	int Result = sqlite3_prepare_v2(Database, Query, strlen(Query) + 1, &Statement, 0);
+	if (Result == SQLITE_OK)
+	{
+		Spam = 0;
+		do 
+		{
+			Result = sqlite3_step(Statement);
+			if (Result == SQLITE_ROW)
+			{
+				char *Temp = (char*)malloc(sizeof(char) * 1024);
+
+				strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
+				Spam = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
+				strcpy(Spam, Temp);
+
+				free(Temp);
+			}
+		} while (Result == SQLITE_ROW);
+	}
+	if (Spam)
+	{
+		return Spam;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+char* SqliteFindTrigger(sqlite3 *Database, char *TriggerWord)
+{
+	char *ErrorMsg = 0;
+	char *Spam = 0;
+
+	sqlite3_stmt *Statement;
+	char *Query = sqlite3_mprintf("SELECT message FROM triggers WHERE trigger LIKE '%q'", TriggerWord);
+	int Result = sqlite3_prepare_v2(Database, Query, strlen(Query) + 1, &Statement, 0);
+	if (Result == SQLITE_OK)
+	{
+		Spam = 0;
+		do 
+		{
+			Result = sqlite3_step(Statement);
+			if (Result == SQLITE_ROW)
+			{
+				char *Temp = (char*)malloc(sizeof(char) * 1024);
+
+				strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
+				Spam = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
+				strcpy(Spam, Temp);
+
+				free(Temp);
+			}
+		} while (Result == SQLITE_ROW);
+	}
+	if (Spam)
+	{
+		return Spam;
+	}
+	else
+	{
+		return 0;
+	}
+}
+
+int SqliteRemoveTrigger(sqlite3 *Database, char *Trigger)
+{
+	char *TriggerID = 0;
+	char *ErrorMsg = 0;
+	TriggerID = SqliteFindTriggerID(Database, Trigger);
+	if (TriggerID)
+	{
+		char *Query = sqlite3_mprintf("DELETE FROM triggers WHERE id='%q'", TriggerID);
+
+		int Result = sqlite3_exec(Database, Query, 0, 0, &ErrorMsg);
+		if (Result == SQLITE_OK)
+		{
+			return 1;
+		}
+		else
+		{
+			sqlite3_free(ErrorMsg);
+		}
+		free(TriggerID);
+	}
+	return 0;
+}
+
+void SqliteSelectAndJoinChannels(irc_connection *Connection, sqlite3 *Database)
+{
+	sqlite3_stmt *Statement;
+
+	char *Query = "SELECT name FROM channels;";
+	int Result = sqlite3_prepare_v2(Database, Query, strlen(Query) + 1, &Statement, 0);
+	if (Result == SQLITE_OK)
+	{
+		do
+		{
+			Result = sqlite3_step(Statement);
+			if (Result == SQLITE_ROW)
+			{
+				JoinChannel(Connection, (char*)sqlite3_column_text(Statement, 0));
+			}
+		} while (Result == SQLITE_ROW);
+	}
+}
+
+int SqliteInsertTrigger(sqlite3 *Database, char *Trigger, char *Spam, char *Channel)
+{
+	char *ErrorMsg = 0;
+	sqlite3_stmt *Statement;
+	char *Query = sqlite3_mprintf("INSERT INTO triggers (trigger, message, channel) VALUES('%q','%q','%q')", Trigger, Spam, Channel);
+
+	int Result = sqlite3_exec(Database, Query, 0, 0, &ErrorMsg);
+	if (Result == SQLITE_OK)
+	{
+		return 1;
+	}
+	else
+	{
+		sqlite3_free(ErrorMsg);
+		return 0;
+	}
+}
+
+int SqliteInsertChannel(sqlite3 *Database, char *Name, char *Owner)
+{
+	char *ErrorMsg = 0;
+	sqlite3_stmt *Statement;
+	char *Query = sqlite3_mprintf("INSERT INTO channel (name,owner) values ('%q','%q')", Name, Owner);
+
+	int Result = sqlite3_exec(Database, Query, 0, 0, &ErrorMsg);
+	if (Result == SQLITE_OK)
+	{
+		return 1;
+	}
+	else
+	{
+		sqlite3_free(ErrorMsg);
+		return 0;
+	}
+}
+
+int IsChannelAdmin(irc_connection *Connection, char *Name)
+{
+	if (!strcmp(Name, "effect0r"))
+	{
+		return 1;
+	}
+	return 0;
+}
+
+int IsMainAdmin(irc_connection *Connection, char *Name)
+{
+	for (int i = 0; i < Connection->ConfigInfo.AdminCount; ++i)
+	{
+		if (!strcmp(Connection->ConfigInfo.Admins[i], Name))
+		{
+			return 1;
+		}
+	}
+	return 0;
 }
 
 void ParseMessage(irc_connection *Connection, char *Message)
@@ -98,450 +351,193 @@ void ParseMessage(irc_connection *Connection, char *Message)
 
 		if (!strcmp(Command, "PRIVMSG"))
 		{
+			char *MessageChannel = Parameters;
 			char *text = strchr(Parameters, ':');
-			*text++ = '\0';
-			if (!strcmp(FromNick, "effect0r"))
+			int ChannelNumber = -1;
+			if (text)
 			{
-				if (text[0] == Connection->ConfigInfo.CommandPrefix)
+				*text++ = '\0';
+			}
+			char *ChannelTemp = strchr(MessageChannel, ' ');
+			if (ChannelTemp)
+			{
+				*ChannelTemp++ = '\0';
+			}
+			// NOTE(effect0r):IMPORTANT(effect0r): This is the _only_ place that admin commands can happen!
+			if (!strcmp(MessageChannel, "#effect0r-cpp"))
+			{
+				if (IsMainAdmin(Connection, FromNick))
 				{
-					*text++ = '\0';
-					char *Param = strchr(text, ' ');
-					if (Param)
+					if (text[0] == Connection->ConfigInfo.CommandPrefix)
 					{
-						*Param++ = '\0';
-					}
-					int CommandNumber = MapSearch(Connection->ConfigInfo.FaqCommandsMap, text);
-					if (CommandNumber >= 0)
-					{
-						char *MessageToSend = Connection->ConfigInfo.FaqCommandsMap->Pairs[CommandNumber].Value;
-						SendMessage(Connection, "#effect0r", MessageToSend);
-					}
-					else if (!strcmp(text, "about"))
-					{
-						SendMessage(Connection, "#effect0r", "Greetings meat popcicle! I'm an IRC bot written in c/c++ to help moderate this channel! For more commands, see the bot's \"commands\" command.");
-					}
-					else if (!strcmp(text, "rehash"))
-					{
-						if (!strcmp(FromNick, Connection->ConfigInfo.Admin))
+						*text++ = '\0';
+
+						char *Param = strchr(text, ' ');
+						if (Param)
 						{
-							RehashCommandsList(Connection);
-							SendMessage(Connection, "#effect0r", "Rehashing commands list... DONE!");
+							*Param++ = '\0';
 						}
-					}
-					else
-					{
-						if (!strcmp(text, "quote"))
+						if (!strcmp(text, "help"))
 						{
-							char *ErrorMsg = 0;
-							char *Query = sqlite3_mprintf("SELECT * FROM quote WHERE id='%q';", Param);
-							sqlite3_stmt *Statement;
-
-							int Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
-							if (Result == SQLITE_OK) 
+							char Message[256];
+							char *AboutMsg = "Greetings meat popsicle! I'm an IRC bot written in c/c++ to help moderate this channel! For more commands, see the \"commands\" command.";
+							snprintf(Message, sizeof(Message), "@%s: %s", FromNick, AboutMsg);
+							SendMessage(Connection, MessageChannel, Message);
+						}
+						else if (!strcmp(text, "addchannel"))
+						{
+							// name, owner
+							char *Name = Param;
+							if (Name[0] != '#')
 							{
-								char *IDList = 0, *Text = 0, *Time = 0;
-								do
-								{
-									Result = sqlite3_step(Statement);
-									if (Result == SQLITE_ROW)
-									{
-										char *Temp = (char*)malloc(sizeof(char) * 1024);
+								SendMessage(Connection, MessageChannel, "Usage: addchannel <channelname> <channelowner>");
+								return;
+							}
+							char *Owner = strchr(Param, ' ');
+							if (Owner) 
+							{
+								*Owner++ = '\0';
+								while (*Owner == ' ') Owner++;
+							}
 
-										strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
-										IDList = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
-										strcpy(IDList, Temp);
-
-										strcpy(Temp, (char*)sqlite3_column_text(Statement, 1));
-										Text = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
-										strcpy(Text, Temp);
-
-										strcpy(Temp, (char*)sqlite3_column_text(Statement, 2));
-										Time = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
-										strcpy(Time, Temp);
-
-										free(Temp);
-
-									}
-								} while(Result == SQLITE_ROW);
-
-								if (IDList && Text && Time)
-								{
-									struct tm tv;
-									ZERO(&tv, struct tm);
-									char FormattedTime[256];
-									char Message[1024];
-
-									strptime(Time, "%s", &tv);
-									strftime(FormattedTime, sizeof(FormattedTime), "%d %b %Y", &tv);
-									snprintf(Message, sizeof(Message), "(#%s) \"%s\" --Casey, %s", IDList, Text, FormattedTime);
-
-									SendMessage(Connection, "#effect0r", Message);
-								}
-								else 
+							if (*Owner && (*Owner != '\n'))
+							{
+								if (SqliteInsertChannel(Connection->ConfigInfo.Database, Name, Owner))
 								{
 									char Message[256];
-									snprintf(Message, sizeof(Message), "No quote with IDList=%s", Param);
-									SendMessage(Connection, "#effect0r", Message);
+									snprintf(Message, sizeof(Message), "Successfully added \"%s\" (with owner \"%s\") to the channel list.", Name, Owner);
+
+									SendMessage(Connection, MessageChannel, Message);
+									JoinChannel(Connection, Name);
 								}
 							}
 							else
 							{
-								sqlite3_free(ErrorMsg);
+								SendMessage(Connection, MessageChannel, "Usage: addchannel <channelname> <channelowner>");
+								return;
 							}
 						}
-						else if (!strcmp(text, "fixquotetime"))
+						else if (!strcmp(text, "rmchannel"))
 						{
-							// NOTE(cory): fixquotetime 01 jan 2015
-							char *Time = 0;
-							char *ID = 0;
-							char Buffer[256];
-							struct tm tv;
-							ZERO(&tv, struct tm);
-
-							if (Param)
+							char *Name = Param;
+							if (*Name != '#')
 							{
-								ID = Param;
-								Time = strchr(Param, ' ');
-								int IDCheck = atoi(ID);
-								if (IDCheck > 0)
-								{
-									if (Time)
-									{
-										*Time++ = '\0';
-										if (strptime(Time, "%d %b %Y", &tv))										
-										{
-											time_t EpochTime = mktime(&tv);
-											char *ErrorMsg = 0;
-											char TimeAsString[256];
-											snprintf(TimeAsString, sizeof(TimeAsString), "%lu", EpochTime);
-
-											char *Query = sqlite3_mprintf("UPDATE quote SET timestamp='%q' WHERE id='%q';", TimeAsString, ID);
-
-											int Result = sqlite3_exec(Connection->ConfigInfo.QuoteList.QuoteDB, Query, 0, 0, &ErrorMsg);
-											if (Result == SQLITE_OK)
-											{
-												sqlite3_stmt *Statement;
-												Query = sqlite3_mprintf("SELECT timestamp FROM quote WHERE id='%q';", ID);
-												int Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
-												if (Result == SQLITE_OK)
-												{
-													char *Timestamp = 0;
-													do 
-													{
-														Result = sqlite3_step(Statement);
-														if (Result == SQLITE_ROW)
-														{
-															char *Temp = (char*)malloc(sizeof(char) * 1024);
-
-															strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
-															Timestamp = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
-															strcpy(Timestamp, Temp);
-
-															free(Temp);
-														}
-													} while (Result == SQLITE_ROW);
-
-													if (Timestamp)
-													{
-														char FormattedTime[256];
-
-														strptime(Timestamp, "%s", &tv);
-														strftime(FormattedTime, sizeof(FormattedTime), "%d %b %Y", &tv);
-
-														snprintf(Buffer, sizeof(Buffer), "Quote %s moved to date: %s", ID, FormattedTime);
-													}
-												}
-											}
-											else
-											{
-												sqlite3_free(ErrorMsg);
-											}
-										}
-										else
-										{
-											//invalid format
-											snprintf(Buffer, sizeof(Buffer), "You must provide a date in the formate <dd> <Mon(th)> <yyyy>");
-										}
-									}
-									else
-									{
-										//invalid id
-										snprintf(Buffer, sizeof(Buffer), "You must provide a time to change ID to.");
-									}
-								}
-								else
-								{
-									//no time given
-									snprintf(Buffer, sizeof(Buffer), "You must provide a valid ID.");
-								}
+								SendMessage(Connection, MessageChannel, "Usage: rmaddchannel <channelname>");
+								return;
 							}
-							else 
+							char *Space = strchr(Name, ' ');
+							if (Space)
 							{
-								//no string given
-								snprintf(Buffer, sizeof(Buffer), "Usage: fixquotetime <id> <dd> <Mon(th)> <yyyy>");
+								*Space++ = '\0';
 							}
-
-							SendMessage(Connection, "#effect0r", Buffer);
-						}
-						else if (!strcmp(text, "fixquote"))
-						{
-							char *ID = 0;
-							char *Update = 0;
-
-							// NOTE(cory): fixquote <id> <update text>
-							if (Param)
+							if (*Name && (*Name != '\n'))
 							{
-								char *ErrorMsg = 0;
-								ID = Param;
-								int IDAsNumber = atoi(ID);
-								if (IDAsNumber > 0)
-								{
-									Update = strchr(Param, ' ');
-									if (Update)
-									{
-										*Update++ = '\0';
-
-										char *Query = sqlite3_mprintf("UPDATE quote SET text='%q' WHERE id='%q';", Update, ID);
-
-										int Result = sqlite3_exec(Connection->ConfigInfo.QuoteList.QuoteDB, Query, 0, 0, &ErrorMsg);
-										if (Result == SQLITE_OK)
-										{
-											sqlite3_stmt *Statement;
-											Query = sqlite3_mprintf("SELECT id FROM quote WHERE id='%q';", ID);
-
-											int Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
-											if (Result == SQLITE_OK)
-											{
-												char *ResultID = 0;
-												do
-												{
-													Result = sqlite3_step(Statement);
-													if (Result == SQLITE_ROW)
-													{
-														char *Temp = (char*)malloc(sizeof(char)*1024);
-
-														strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
-														ResultID = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
-														strcpy(ResultID, Temp);
-
-														free(Temp);
-													}
-												} while (Result == SQLITE_ROW);
-
-												if (ResultID)
-												{
-													char Buffer[256];
-													snprintf(Buffer, sizeof(Buffer),  "Updated quote ID=%s to \"%s\"", ResultID, Update);
-													SendMessage(Connection, "#effect0r", Buffer);
-
-												}
-											}
-										}
-										else
-										{
-											sqlite3_free(ErrorMsg);
-										}
-									}
-									else
-									{
-										SendMessage(Connection, "#effect0r", "Usage: fixquote <id> <update text>");
-									}
-								}
-								else 
-								{
-									SendMessage(Connection, "#effect0r", "Usage: fixquote <id> <update text>");
-								}
-
-							}
-							else
-							{
-								SendMessage(Connection, "#effect0r", "Usage: fixquote <id> <update text>");
-							}
-						}
-						else if (!strcmp(text, "addquote"))
-						{
-							char *ErrorMsg = 0;
-							time_t Now = time(0);
-							char CurrentTime[256];
-							snprintf(CurrentTime, sizeof(CurrentTime), "%lu", Now);
-							sqlite3_stmt *Statement;
-
-							char *Query = sqlite3_mprintf("INSERT INTO quote (text,timestamp) VALUES ('%q','%q');", Param, CurrentTime);
-							int Result = sqlite3_exec(Connection->ConfigInfo.QuoteList.QuoteDB, Query, 0, 0, &ErrorMsg);
-							if (Result == SQLITE_OK)
-							{
-								Query = sqlite3_mprintf("SELECT id FROM quote WHERE timestamp='%q';", CurrentTime);
-								Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
-								if (Result == SQLITE_OK)
-								{
-									char *ID = 0;
-									do
-									{
-										Result = sqlite3_step(Statement);
-										if (Result == SQLITE_ROW)
-										{
-											char *Temp = (char*)malloc(sizeof(char) * 128);
-											strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
-											ID = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
-											strcpy(ID, Temp);
-											free(Temp);
-										}
-									} while (Result == SQLITE_ROW);
-
-									if (ID)
-									{
-										char Msg[256];
-										snprintf(Msg, sizeof(Msg),  "Added quote ID=%s", ID);
-										SendMessage(Connection, "#effect0r", Msg); 
-									}
-								}
-							}
-							else 
-							{
-								//failed to insert
-								sqlite3_free(ErrorMsg);
-							}
-						}
-						else if (!strcmp(text, "searchquote"))
-						{
-							char *ErrorMsg = 0;
-							char *Query = sqlite3_mprintf("SELECT * FROM quote where text LIKE '%%%q%%'", Param);
-							sqlite3_stmt *Statement;
-
-							int Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
-							if (Result == SQLITE_OK)
-							{
-								char *IDList[1024];
-								char *TextList[1024];
-								char *TimeList[1024];
-
-								int Position = 0;
-
-								do
-								{
-									Result = sqlite3_step(Statement);
-									if (Result == SQLITE_ROW)
-									{
-										char *Temp = (char*)malloc(sizeof(char) *1024);
-
-										strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
-										IDList[Position] = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
-										strcpy(IDList[Position], Temp);
-
-										strcpy(Temp, (char*)sqlite3_column_text(Statement, 1));
-										TextList[Position] = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
-										strcpy(TextList[Position], Temp);
-
-										strcpy(Temp, (char*)sqlite3_column_text(Statement, 2));
-										TimeList[Position] = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
-										strcpy(TimeList[Position], Temp);
-
-										++Position;
-										free(Temp);
-									}
-								} while (Result == SQLITE_ROW);
-
-								char Buffer[1024];
-								if (Position)
-								{
-									if (Position == 1)
-									{
-										struct tm tv;
-										char FormattedTime[256];
-										ZERO(&tv, struct tm);
-
-										strptime(TimeList[0], "%s", &tv);
-										strftime(FormattedTime, sizeof(FormattedTime), "%d %b %Y", &tv);
-
-										snprintf(Buffer, sizeof(Buffer),  "(#%s)\"%s\" --Casey, %s", IDList[0], TextList[0], FormattedTime);
-									}
-									else
-									{
-										char QuoteNums[1024];
-										strcpy(QuoteNums, IDList[0]);
-										for (int i = 1; i < Position; ++i)
-										{
-											char Temp[16];
-											snprintf(Temp, sizeof(Temp), ", %s", IDList[i]);
-											strcat(QuoteNums, Temp);
-										}
-
-										snprintf(Buffer, sizeof(Buffer), "Found %d quotes containing string %s: %s", Position, Param, QuoteNums);
-									}
-								}
-								else
-								{
-									snprintf(Buffer, sizeof(Buffer), "No quotes found with string \"%s\"", Param);
-								}
-
-								SendMessage(Connection, "#effect0r", Buffer);
-								// NOTE(cory): Cleanup.
-								for (int i = 0; i < Position; ++i)
-								{
-									free(IDList[i]);
-									free(TextList[i]);
-									free(TimeList[i]);
-								}
-							}
-						}
-						else if(!strcmp(text, "delquote"))
-						{
-							char *ErrorMsg = 0;
-							char *Query = sqlite3_mprintf("SELECT text FROM quote WHERE ID='%q'", Param);
-							sqlite3_stmt *Statement;
-
-							int Result = sqlite3_prepare_v2(Connection->ConfigInfo.QuoteList.QuoteDB, Query, strlen(Query)+1, &Statement, 0);
-							if (Result == SQLITE_OK)
-							{
-								char *QuoteText = 0;
-								do
-								{
-									Result = sqlite3_step(Statement);
-									if (Result == SQLITE_ROW)
-									{
-										char *Temp = (char*)malloc(1024);
-
-										strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
-										QuoteText = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
-										strcpy(QuoteText, Temp);
-
-										free(Temp);
-									}
-								} while (Result == SQLITE_ROW);
-
-								if (QuoteText)
-								{
-									// NOTE(cory): Quote exists because QuoteText has data.
-									Query = sqlite3_mprintf("DELETE FROM quote WHERE id='%q'", Param);
-									if (sqlite3_exec(Connection->ConfigInfo.QuoteList.QuoteDB, Query, 0, 0, &ErrorMsg) == SQLITE_OK)
-									{
-										char Msg[256];
-										snprintf(Msg, sizeof(Msg),  "Deleted quote ID=%s", Param);
-										SendMessage(Connection, "#effect0r", Msg); 
-									}
-								}
-								else
+								if (SqliteRemoveChannel(Connection->ConfigInfo.Database, Name))
 								{
 									char Message[256];
-									snprintf(Message, sizeof(Message),  "Quote ID=%s does not exist.", Param);
-									SendMessage(Connection, "#effect0r", Message);
+									snprintf(Message, sizeof(Message), "Successfully removed \"%s\" from the channel list.", Name);
+
+									SendMessage(Connection, MessageChannel, Message);
+									PartChannel(Connection, Name);
 								}
 							}
 						}
 					}
 				}
 			}
-		}
-		// NOTE(cory): Join channels in the channel list after MOTD has finished.
-		else if (!strcmp(Command, "376"))
-		{
-			for (int i = 0; i < Connection->ConfigInfo.ChannelCount; ++i)
+			// NOTE(effect0r): This is the place that channel-specific commands happen.
+			else
 			{
-				JoinChannel(Connection, Connection->ConfigInfo.ChannelList[i]);
+				if (IsChannelAdmin(Connection, FromNick))
+				{
+					char *Param = strchr(text, ' ');
+					if (Param)
+					{
+						*Param++ = '\0';
+					}
+					if (text[0] == Connection->ConfigInfo.CommandPrefix)
+					{
+						*text++ = '\0';
+						if (!strcmp(text, "whitelist"))
+						{
+
+						}
+						else if (!strcmp(text, "trigger"))
+						{
+							char *Trigger = Param;
+							char *Spam = strchr(Param, ' ');
+							if (Spam)
+							{
+								*Spam++ = '\0';
+							}
+							if (*Trigger && (*Trigger != '\n'))
+							{
+								if (SqliteInsertTrigger(Connection->ConfigInfo.Database, Trigger, Spam, MessageChannel))
+								{
+									char Message[256];
+									snprintf(Message, sizeof(Message), "Successfully added \"%s\" to the trggers list.", Trigger);
+
+									SendMessage(Connection, MessageChannel, Message);
+								}
+							}
+							else
+							{
+								SendMessage(Connection, MessageChannel, "Useage: trigger <trigger alias> <message to send>");
+							}
+						}
+						else if (!strcmp(text, "rmtrigger"))
+						{
+							char *Trigger = Param;
+							char *Errata = strchr(Param, ' ');
+							if (Errata)
+							{
+								SendMessage(Connection, MessageChannel, "Usage: rmtrigger <trigger alias>");
+								return;
+							}
+							if (*Trigger && (*Trigger != '\n'))
+							{
+								if (SqliteRemoveTrigger(Connection->ConfigInfo.Database, Trigger))
+								{
+									char Msg[256];
+									snprintf(Msg, sizeof(Msg), "Successfully removed \"%s\" from the triggers list.", Trigger);
+
+									SendMessage(Connection, MessageChannel, Msg);
+								}
+							}
+							else
+							{
+								SendMessage(Connection, MessageChannel, "Usage: rmtrigger <trigger alias>");
+								return;
+							}
+						}
+					}
+					else
+					{
+						//look into the DB for a trigger.
+						char *Spam = 0;
+						Spam = SqliteFindTrigger(Connection->ConfigInfo.Database, text);
+						if (Spam)
+						{
+							char Msg[256];
+							snprintf(Msg, sizeof(Msg), "@%s, %s", FromNick, Spam);
+
+							SendMessage(Connection, MessageChannel, Msg);
+							free(Spam);
+						}
+					}
+				}
 			}
 		}
-	}
+		// NOTE(effect0r): Join channels in the channel list after MOTD has finished.
+		else if (!strcmp(Command, "376"))
+		{
+			char Channel[64];
+			snprintf(Channel, sizeof(Channel), "#%s", Connection->ConfigInfo.Nick);
+			JoinChannel(Connection, Channel);
 
+			SqliteSelectAndJoinChannels(Connection, Connection->ConfigInfo.Database);
+		}
+	}
 	else
 	{
 		Command = Message;
