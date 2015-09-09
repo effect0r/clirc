@@ -1,4 +1,6 @@
 #include "main.h"
+#include "sqlite3.cpp"
+#include "irc_connection.cpp"
 
 map MapNew(unsigned int size)
 {
@@ -63,96 +65,6 @@ int CharCount(char *String, char Check)
 	return Result;
 }
 
-void ProcessChannelTriggers(irc_connection*, int, char*);
-#include "irc_connection.cpp"
-
-#if 0
-void ProcessChannelTriggers(irc_connection* Connection, int CurrentChannel, char *TriggersFileName)
-{
-	config_info *ChannelInfo = &Connection->ConfigInfo;
-	ChannelInfo->TriggerMap = MapNew(10);
-	if (!ChannelInfo->TriggersFileName)
-	{
-		ChannelInfo->TriggersFileName = (char*)malloc(sizeof(char) * (strlen(TriggersFileName) + 1));
-		strcpy(ChannelInfo->TriggersFileName, TriggersFileName);
-	}
-
-	map *Map = &ChannelInfo->TriggerMap;
-
-	int InfoDesc = open(ChannelInfo->TriggersFileName, O_RDONLY);
-
-	struct stat InfoStats;
-	if (stat(ChannelInfo->TriggersFileName, &InfoStats) != -1)
-	{
-		char *CommandsList = (char*)mmap(0, InfoStats.st_size, PROT_READ, MAP_SHARED, InfoDesc, 0);
-		if (CommandsList)
-		{
-			char *ListCopy = (char*)malloc(sizeof(char)*strlen(CommandsList));
-			memcpy(ListCopy, CommandsList, strlen(CommandsList));
-
-			char *Line = ListCopy;
-			while (*Line != '\n')
-			{
-				//Line = a,b,c\tstuff to send\nd,e,f\tother stuff to sends\n\n
-				char *Words = Line;
-				char *MessageToSend = strchr(Line, '\t');
-				char *NextLine = strchr(Line, '\n');
-				if (MessageToSend)
-				{
-					*MessageToSend++ = '\0';
-				}
-				if (NextLine)
-				{
-					*NextLine++ = '\0';
-				}
-				//Words=a,b,c
-				//MessageToSend = stufftosend
-				//NextLine = d,e,f\totherstufftosends\n\n
-
-				int WordCount = CharCount(Line, ',');
-
-				char *InsertMsg = (char*)malloc(sizeof(char) * (strlen(MessageToSend) + 1));
-				strcpy(InsertMsg, MessageToSend);
-
-				for (int i = 0; i < WordCount; ++i)
-				{
-					char *NextWord = strchr(Words, ',');
-					if (NextWord)
-					{
-						*NextWord++ = '\0';
-					}
-					char *InsertWord = (char*)malloc(sizeof(char) * (strlen(Words) + 1));
-					strcpy(InsertWord, Words);
-					MapInsert(Map, InsertWord, InsertMsg);
-					Words = NextWord;
-				}
-				Line = NextLine;
-			}
-			free(ListCopy);
-		}
-		munmap(CommandsList, InfoStats.st_size);
-	}
-	close(InfoDesc);
-}
-#endif
-/*
-   struct config_info
-   {
-// NOTE(cory): This stuff is within a separate section of the config file, denoted by a channel name. Support for 256 channels currently. May change.
-int NumberAdmins;
-char *Admins[256];
-char CommandPrefix;
-sqlite3 *Database;
-
-	// NOTE(cory): This stuff is within the core section
-	char *Port;
-	char *Nick;
-	char *Server;
-	char *User;
-	char *Pass;
-	};
- *
- */
 void OpenFile(irc_connection *Conn, char *FileName)
 {
 	struct stat Stats;

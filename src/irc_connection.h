@@ -49,5 +49,14 @@ struct irc_connection
 	int Socket;
 	FILE *OutStream;
 };
-
+void PartChannel(irc_connection*, char*);
+void JoinChannel(irc_connection*, char*);
+void SendMessage(irc_connection*, char*, char*);
+void CloseConnection(irc_connection *Connection);
+int IsChannelAdmin(irc_connection*, char*);
+int IsMainAdmin(irc_connection*, char*);
+void ParseMessage(irc_connection*, char*);
+void ParseReply(irc_connection*, char*);
+void MessageLoop(irc_connection*);
+int Connect(irc_connection*);
 #endif
