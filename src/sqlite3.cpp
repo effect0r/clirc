@@ -435,7 +435,7 @@ int SQLiteIsChannelAdmin(sqlite3 *Database, char *Channel, char *Name)
 		char *User = Admin;
 		while (User)
 		{
-			char *NextUser = strchr(Admin, ',');
+			char *NextUser = strchr(User, ',');
 			if (NextUser)
 			{
 				*NextUser++ = '\0';
@@ -485,7 +485,7 @@ int SQLiteIsWhitelistedOnChannel(sqlite3 *Database, char *Channel, char *Name)
 		char *User = Whitelist;
 		while (User)
 		{
-			char *NextUser = strchr(Whitelist, ',');
+			char *NextUser = strchr(User, ',');
 			if (NextUser)
 			{
 				*NextUser++ = '\0';
