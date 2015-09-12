@@ -88,12 +88,12 @@ void RehashCommandsList(irc_connection *Connection, int ChannelNumber)
 
 int IsWhitelisted(irc_connection *Connection, char *Name, char *Channel)
 {
-	return SqliteIsWhitelistedOnChannel(Connection->ConfigInfo.Database, Channel, Name);
+	return SQLiteIsWhitelistedOnChannel(Connection->ConfigInfo.Database, Channel, Name);
 }
 
 int IsChannelAdmin(irc_connection *Connection, char *Name, char *Channel)
 {
-	return SqliteIsChannelAdmin(Connection->ConfigInfo.Database, Channel, Name);
+	return SQLiteIsChannelAdmin(Connection->ConfigInfo.Database, Channel, Name);
 }
 
 int IsMainAdmin(irc_connection *Connection, char *Name)
@@ -146,6 +146,11 @@ void ParseMessage(irc_connection *Connection, char *Message)
 			char *MessageChannel = Parameters;
 			char *text = strchr(Parameters, ':');
 			int ChannelNumber = -1;
+
+			// TODO(effect0r): Maybe have this as a defacto config option so it's not predictable?
+			char AdminChannel[256];
+			snprintf(AdminChannel, sizeof(AdminChannel), "#%s", Connection->ConfigInfo.Nick);
+
 			if (text)
 			{
 				*text++ = '\0';
@@ -156,7 +161,7 @@ void ParseMessage(irc_connection *Connection, char *Message)
 				*ChannelTemp++ = '\0';
 			}
 			// NOTE(effect0r):IMPORTANT(effect0r): This is the _only_ place that admin commands can happen!
-			if (!strcmp(MessageChannel, "#effect0r-cpp"))
+			if (!strcmp(MessageChannel, AdminChannel))
 			{
 				if (IsMainAdmin(Connection, FromNick))
 				{
@@ -169,38 +174,38 @@ void ParseMessage(irc_connection *Connection, char *Message)
 						{
 							*Param++ = '\0';
 						}
-						if (!strcmp(text, "help"))
-						{
-							char Message[256];
-							char *AboutMsg = "Greetings meat popsicle! I'm an IRC bot written in c/c++ to help moderate this channel! For more commands, see the \"commands\" command.";
-							snprintf(Message, sizeof(Message), "@%s: %s", FromNick, AboutMsg);
-							SendMessage(Connection, MessageChannel, Message);
-						}
-						else if (!strcmp(text, "addchannel"))
+												if (!strcmp(text, "addchannel"))
 						{
 							// name, owner
 							char *Name = Param;
-							if (Name[0] != '#')
+							if (Name)
 							{
-								SendMessage(Connection, MessageChannel, "Usage: addchannel <channelname> <channelowner>");
-								return;
-							}
-							char *Owner = strchr(Param, ' ');
-							if (Owner) 
-							{
-								*Owner++ = '\0';
-								while (*Owner == ' ') Owner++;
-							}
-
-							if (*Owner && (*Owner != '\n'))
-							{
-								if (SqliteInsertChannel(Connection->ConfigInfo.Database, Name, Owner))
+								if (Name[0] != '#')
 								{
-									char Message[256];
-									snprintf(Message, sizeof(Message), "Successfully added \"%s\" (with owner \"%s\") to the channel list.", Name, Owner);
-
-									SendMessage(Connection, MessageChannel, Message);
-									JoinChannel(Connection, Name);
+									SendMessage(Connection, MessageChannel, "Usage: addchannel <channelname> <channelowner>");
+									return;
+								}
+								char *Owner = strchr(Param, ' ');
+								if (Owner) 
+								{
+									*Owner++ = '\0';
+									while (*Owner == ' ') Owner++;
+								}
+	
+								if (*Owner && (*Owner != '\n'))
+								{
+									if (SQLiteInsertChannel(Connection->ConfigInfo.Database, Name, Owner))
+									{
+										char Message[256];
+										snprintf(Message, sizeof(Message), "Successfully added \"%s\" (with owner \"%s\") to the channel list.", Name, Owner);
+	
+										SendMessage(Connection, MessageChannel, Message);
+										JoinChannel(Connection, Name);
+									}
+								}
+								else
+								{
+									SendMessage(Connection, MessageChannel, "Usage: addchannel <channelname> <channelowner>");
 								}
 							}
 							else
@@ -212,26 +217,37 @@ void ParseMessage(irc_connection *Connection, char *Message)
 						else if (!strcmp(text, "rmchannel"))
 						{
 							char *Name = Param;
-							if (*Name != '#')
+							if (Name)
+							{
+								if (*Name != '#')
+								{
+									SendMessage(Connection, MessageChannel, "Usage: rmaddchannel <channelname>");
+									return;
+								}
+								char *Space = strchr(Name, ' ');
+								if (Space)
+								{
+									*Space++ = '\0';
+								}
+								if (*Name && (*Name != '\n'))
+								{
+									if (SQLiteRemoveChannel(Connection->ConfigInfo.Database, Name))
+									{
+										char Message[256];
+										snprintf(Message, sizeof(Message), "Successfully removed \"%s\" from the channel list.", Name);
+	
+										SendMessage(Connection, MessageChannel, Message);
+										PartChannel(Connection, Name);
+									}
+								}
+								else
+								{
+									SendMessage(Connection, MessageChannel, "Usage: rmaddchannel <channelname>");
+								}
+							}
+							else 
 							{
 								SendMessage(Connection, MessageChannel, "Usage: rmaddchannel <channelname>");
-								return;
-							}
-							char *Space = strchr(Name, ' ');
-							if (Space)
-							{
-								*Space++ = '\0';
-							}
-							if (*Name && (*Name != '\n'))
-							{
-								if (SqliteRemoveChannel(Connection->ConfigInfo.Database, Name))
-								{
-									char Message[256];
-									snprintf(Message, sizeof(Message), "Successfully removed \"%s\" from the channel list.", Name);
-
-									SendMessage(Connection, MessageChannel, Message);
-									PartChannel(Connection, Name);
-								}
 							}
 						}
 					}
@@ -253,7 +269,7 @@ void ParseMessage(irc_connection *Connection, char *Message)
 						if (!strcmp(text, "whitelist"))
 						{
 							char *Name = Param;
-							if (SqliteAddToWhitelist(Connection->ConfigInfo.Database, MessageChannel, Name))
+							if (SQLiteAddToWhitelist(Connection->ConfigInfo.Database, MessageChannel, Name))
 							{
 								char Buffer[256];
 								snprintf(Buffer, sizeof(Buffer), "Successfully added %s to the whitelist.", Name);
@@ -264,7 +280,7 @@ void ParseMessage(irc_connection *Connection, char *Message)
 						else if (!strcmp(text, "rmwhitelist"))
 						{
 							char *Name = Param;
-							if (SqliteRemoveFromWhiteList(Connection->ConfigInfo.Database, MessageChannel, Name))
+							if (SQLiteRemoveFromWhiteList(Connection->ConfigInfo.Database, MessageChannel, Name))
 							{
 								char Buffer[256];
 								snprintf(Buffer, sizeof(Buffer), "Successfully removed %s from the whitelist.", Name);
@@ -287,7 +303,7 @@ void ParseMessage(irc_connection *Connection, char *Message)
 							}
 							if (*Trigger && (*Trigger != '\n'))
 							{
-								if (SqliteAddTrigger(Connection->ConfigInfo.Database, Trigger, Spam, MessageChannel))
+								if (SQLiteAddTrigger(Connection->ConfigInfo.Database, Trigger, Spam, MessageChannel))
 								{
 									char Message[256];
 									snprintf(Message, sizeof(Message), "Successfully added \"%s\" to the trggers list.", Trigger);
@@ -311,7 +327,7 @@ void ParseMessage(irc_connection *Connection, char *Message)
 							}
 							if (*Trigger && (*Trigger != '\n'))
 							{
-								if (SqliteRemoveTrigger(Connection->ConfigInfo.Database, Trigger, MessageChannel))
+								if (SQLiteRemoveTrigger(Connection->ConfigInfo.Database, Trigger, MessageChannel))
 								{
 									char Msg[256];
 									snprintf(Msg, sizeof(Msg), "Successfully removed \"%s\" from the triggers list.", Trigger);
@@ -335,7 +351,7 @@ void ParseMessage(irc_connection *Connection, char *Message)
 					{
 						//look into the DB for a trigger.
 						char *Spam = 0;
-						Spam = SqliteFindTrigger(Connection->ConfigInfo.Database, text);
+						Spam = SQLiteFindTrigger(Connection->ConfigInfo.Database, text);
 						if (Spam)
 						{
 							char Msg[256];
@@ -344,6 +360,15 @@ void ParseMessage(irc_connection *Connection, char *Message)
 							SendMessage(Connection, MessageChannel, Msg);
 							free(Spam);
 						}
+						// other commands
+						if (!strcmp(text, "help"))
+						{
+							char Message[256];
+							char *AboutMsg = "Greetings meat popsicle! I'm an IRC bot written in c/c++ to help moderate this channel! For more commands, see the \"commands\" command.";
+							snprintf(Message, sizeof(Message), "@%s: %s", FromNick, AboutMsg);
+							SendMessage(Connection, MessageChannel, Message);
+						}
+
 					}
 				}
 			}
@@ -355,7 +380,7 @@ void ParseMessage(irc_connection *Connection, char *Message)
 			snprintf(Channel, sizeof(Channel), "#%s", Connection->ConfigInfo.Nick);
 			JoinChannel(Connection, Channel);
 
-			SqliteSelectAndJoinChannels(Connection, Connection->ConfigInfo.Database);
+			SQLiteSelectAndJoinChannels(Connection, Connection->ConfigInfo.Database);
 		}
 	}
 	else

@@ -1,4 +1,4 @@
-int SqliteRemoveFromWhiteList(sqlite3 *Database, char *Channel, char *Name)
+int SQLiteRemoveFromWhiteList(sqlite3 *Database, char *Channel, char *Name)
 {
 	char *ErrorMsg = 0;
 	int Result = 1;
@@ -104,7 +104,7 @@ int SqliteRemoveFromWhiteList(sqlite3 *Database, char *Channel, char *Name)
 	return Result;
 }
 
-int SqliteAddToWhitelist(sqlite3 *Database, char *Channel, char *Name)
+int SQLiteAddToWhitelist(sqlite3 *Database, char *Channel, char *Name)
 {
 	char *ErrorMsg = 0;
 	int Result = 1;
@@ -159,7 +159,7 @@ int SqliteAddToWhitelist(sqlite3 *Database, char *Channel, char *Name)
 	return Result;
 }
 
-char* SqliteFindChannelID(sqlite3 *Database, char *Name)
+char* SQLiteFindChannelID(sqlite3 *Database, char *Name)
 {
 	char *ErrorMsg = 0;
 	char *Spam = 0;
@@ -195,7 +195,7 @@ char* SqliteFindChannelID(sqlite3 *Database, char *Name)
 	}
 }
 
-char* SqliteFindTriggerID(sqlite3 *Database, char *TriggerWord)
+char* SQLiteFindTriggerID(sqlite3 *Database, char *TriggerWord)
 {
 	char *ErrorMsg = 0;
 	char *Spam = 0;
@@ -231,7 +231,7 @@ char* SqliteFindTriggerID(sqlite3 *Database, char *TriggerWord)
 	}
 }
 
-char* SqliteFindTrigger(sqlite3 *Database, char *TriggerWord)
+char* SQLiteFindTrigger(sqlite3 *Database, char *TriggerWord)
 {
 	char *ErrorMsg = 0;
 	char *Spam = 0;
@@ -267,7 +267,7 @@ char* SqliteFindTrigger(sqlite3 *Database, char *TriggerWord)
 	}
 }
 
-void SqliteSelectAndJoinChannels(irc_connection *Connection, sqlite3 *Database)
+void SQLiteSelectAndJoinChannels(irc_connection *Connection, sqlite3 *Database)
 {
 	sqlite3_stmt *Statement;
 
@@ -286,7 +286,7 @@ void SqliteSelectAndJoinChannels(irc_connection *Connection, sqlite3 *Database)
 	}
 }
 
-int SqliteAddTrigger(sqlite3 *Database, char *Trigger, char *Spam, char *Channel)
+int SQLiteAddTrigger(sqlite3 *Database, char *Trigger, char *Spam, char *Channel)
 {
 	char *ErrorMsg = 0;
 	sqlite3_stmt *Statement;
@@ -310,11 +310,11 @@ int SqliteAddTrigger(sqlite3 *Database, char *Trigger, char *Spam, char *Channel
 	}
 }
 
-int SqliteRemoveTrigger(sqlite3 *Database, char *Trigger, char *ChannelName)
+int SQLiteRemoveTrigger(sqlite3 *Database, char *Trigger, char *ChannelName)
 {
 	char *TriggerID = 0;
 	char *ErrorMsg = 0;
-	TriggerID = SqliteFindTriggerID(Database, Trigger);
+	TriggerID = SQLiteFindTriggerID(Database, Trigger);
 	if (TriggerID)
 	{
 		char TableName[256];
@@ -336,11 +336,11 @@ int SqliteRemoveTrigger(sqlite3 *Database, char *Trigger, char *ChannelName)
 	return 0;
 }
 
-int SqliteRemoveChannel(sqlite3 *Database, char *Name)
+int SQLiteRemoveChannel(sqlite3 *Database, char *Name)
 {
 	char *ChannelID = 0;
 	char *ErrorMsg = 0;
-	ChannelID = SqliteFindChannelID(Database, Name);
+	ChannelID = SQLiteFindChannelID(Database, Name);
 	if (ChannelID)
 	{
 		char *Query = sqlite3_mprintf("DELETE FROM channels WHERE id='%q'", ChannelID);
@@ -371,7 +371,7 @@ int SqliteRemoveChannel(sqlite3 *Database, char *Name)
 	return 0;
 }
 
-int SqliteInsertChannel(sqlite3 *Database, char *Name, char *Owner)
+int SQLiteInsertChannel(sqlite3 *Database, char *Name, char *Owner)
 {
 	char *ErrorMsg = 0;
 	sqlite3_stmt *Statement;
@@ -404,7 +404,7 @@ int SqliteInsertChannel(sqlite3 *Database, char *Name, char *Owner)
 	return 0;
 }
 
-int SqliteIsChannelAdmin(sqlite3 *Database, char *Channel, char *Name)
+int SQLiteIsChannelAdmin(sqlite3 *Database, char *Channel, char *Name)
 {
 	int Result = 0;
 	char *Admin = 0;
@@ -432,16 +432,28 @@ int SqliteIsChannelAdmin(sqlite3 *Database, char *Channel, char *Name)
 
 	if (Admin)
 	{
-		if (strstr(Admin, Name))
+		char *User = Admin;
+		while (User)
 		{
-			Result = 1;
+			char *NextUser = strchr(Admin, ',');
+			if (NextUser)
+			{
+				*NextUser++ = '\0';
+			}
+			if (!strcmp(User, Name))
+			{
+				Result = 1;
+				break;
+			}
+
+			User = NextUser;		
 		}
 		free(Admin);
 	}
 	return Result;
 }
 
-int SqliteIsWhitelistedOnChannel(sqlite3 *Database, char *Channel, char *Name)
+int SQLiteIsWhitelistedOnChannel(sqlite3 *Database, char *Channel, char *Name)
 {
 	int Result = 0;
 	char *Whitelist = 0;
@@ -469,9 +481,22 @@ int SqliteIsWhitelistedOnChannel(sqlite3 *Database, char *Channel, char *Name)
 
 	if (Whitelist)
 	{
-		if (strstr(Whitelist, Name))
+		// NOTE(effect0r): Check each name within Whitelist (ie: comma-or-null delimited string) to see if it matches Name.
+		char *User = Whitelist;
+		while (User)
 		{
-			Result = 1;
+			char *NextUser = strchr(Whitelist, ',');
+			if (NextUser)
+			{
+				*NextUser++ = '\0';
+			}
+			if (!strcmp(User, Name))
+			{
+				Result = 1;
+				break;
+			}
+
+			User = NextUser;		
 		}
 		free(Whitelist);
 	}
