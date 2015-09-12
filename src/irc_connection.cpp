@@ -86,13 +86,14 @@ void RehashCommandsList(irc_connection *Connection, int ChannelNumber)
 }
 #endif
 
-int IsChannelAdmin(irc_connection *Connection, char *Name)
+int IsWhitelisted(irc_connection *Connection, char *Name, char *Channel)
 {
-	if (!strcmp(Name, "effect0r"))
-	{
-		return 1;
-	}
-	return 0;
+	return SqliteIsWhitelistedOnChannel(Connection->ConfigInfo.Database, Channel, Name);
+}
+
+int IsChannelAdmin(irc_connection *Connection, char *Name, char *Channel)
+{
+	return SqliteIsChannelAdmin(Connection->ConfigInfo.Database, Channel, Name);
 }
 
 int IsMainAdmin(irc_connection *Connection, char *Name)
@@ -239,7 +240,7 @@ void ParseMessage(irc_connection *Connection, char *Message)
 			// NOTE(effect0r): This is the place that channel-specific commands happen.
 			else
 			{
-				if (IsChannelAdmin(Connection, FromNick))
+				if (IsChannelAdmin(Connection, FromNick, MessageChannel))
 				{
 					char *Param = strchr(text, ' ');
 					if (Param)
@@ -251,7 +252,30 @@ void ParseMessage(irc_connection *Connection, char *Message)
 						*text++ = '\0';
 						if (!strcmp(text, "whitelist"))
 						{
+							char *Name = Param;
+							if (SqliteAddToWhitelist(Connection->ConfigInfo.Database, MessageChannel, Name))
+							{
+								char Buffer[256];
+								snprintf(Buffer, sizeof(Buffer), "Successfully added %s to the whitelist.", Name);
+								SendMessage(Connection, MessageChannel, Buffer);
+							}
 
+						}
+						else if (!strcmp(text, "rmwhitelist"))
+						{
+							char *Name = Param;
+							if (SqliteRemoveFromWhiteList(Connection->ConfigInfo.Database, MessageChannel, Name))
+							{
+								char Buffer[256];
+								snprintf(Buffer, sizeof(Buffer), "Successfully removed %s from the whitelist.", Name);
+								SendMessage(Connection, MessageChannel, Buffer);
+							}
+							else
+							{
+								char Buffer[256];
+								snprintf(Buffer, sizeof(Buffer), "User \"%s\" is not in the whitelist.", Name);
+								SendMessage(Connection, MessageChannel, Buffer);
+							}
 						}
 						else if (!strcmp(text, "trigger"))
 						{
@@ -273,7 +297,7 @@ void ParseMessage(irc_connection *Connection, char *Message)
 							}
 							else
 							{
-								SendMessage(Connection, MessageChannel, "Useage: trigger <trigger alias> <message to send>");
+								SendMessage(Connection, MessageChannel, "Usage: trigger <trigger alias> <message to send>");
 							}
 						}
 						else if (!strcmp(text, "rmtrigger"))
@@ -301,6 +325,11 @@ void ParseMessage(irc_connection *Connection, char *Message)
 								return;
 							}
 						}
+					}
+					// This is where white listed people can do stuff. Add/fix/change/delete quotes, etc.
+					else if (IsWhitelisted(Connection, FromNick, MessageChannel))
+					{
+						SendMessage(Connection, MessageChannel, "You're whitelisted, but there's no commands for you yet!");
 					}
 					else
 					{

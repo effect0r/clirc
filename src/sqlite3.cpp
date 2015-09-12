@@ -1,3 +1,164 @@
+int SqliteRemoveFromWhiteList(sqlite3 *Database, char *Channel, char *Name)
+{
+	char *ErrorMsg = 0;
+	int Result = 1;
+	sqlite3_stmt *Statement;
+	char *Whitelist = 0;
+
+	char *Query = sqlite3_mprintf("SELECT whitelist FROM channels WHERE name LIKE '%q'", Channel);
+	int ResultMainQuery = sqlite3_prepare_v2(Database, Query, strlen(Query) + 1, &Statement, 0);
+	if (ResultMainQuery == SQLITE_OK)
+	{
+		do 
+		{
+			ResultMainQuery = sqlite3_step(Statement);
+			if (ResultMainQuery == SQLITE_ROW)
+			{
+				char *Temp = (char*)malloc(sizeof(char) * 1024);
+
+				strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
+				Whitelist = (char*)malloc(sizeof(char*) * (strlen(Temp) + 1));
+				strcpy(Whitelist, Temp);
+
+				if (strlen(Whitelist) != 0)
+				{
+					//Remove from the list.
+					char *PositionOfUser = strstr(Whitelist, Name);
+					if (PositionOfUser)
+					{
+						if (Whitelist == PositionOfUser)
+						{
+							//Beginning of list.
+							char *WhitelistComma = strchr(PositionOfUser, ',');
+							if (WhitelistComma)
+							{
+								*WhitelistComma++ = '\0';
+								char *TempWhitelist = (char*)malloc(sizeof(char) * (strlen(WhitelistComma) + 1));
+								strcpy(TempWhitelist, WhitelistComma);
+
+								free(Whitelist);
+
+								Whitelist = (char*)malloc(sizeof(char) * (strlen(TempWhitelist) + 1));
+								strcpy(Whitelist, TempWhitelist);
+							}
+							else
+							{
+								// whitelist has only one name in it.
+								*Whitelist = '\0';
+							}
+						}
+						else
+						{
+							//Elsewhere in list. 
+							*PositionOfUser++ = '\0';
+							//scan forward to next comma
+							char *WhitelistComma = strchr(PositionOfUser, ',');
+							if (WhitelistComma)
+							{
+								*WhitelistComma++ = '\0';
+								char *TempWhiteList = (char*)malloc(sizeof(char) * ((strlen(Whitelist)) + (strlen(WhitelistComma) + 1)));
+								char *TempAfterComma = (char*)malloc(sizeof(char) * (strlen(WhitelistComma) +1));
+								strcpy(TempWhiteList, Whitelist);
+								strcpy(TempAfterComma, WhitelistComma);
+
+								free(Whitelist);
+
+								strcat(TempWhiteList, WhitelistComma);
+								Whitelist = (char*)malloc(sizeof(char) * (strlen(TempWhiteList) + 1));
+								strcpy(Whitelist, TempWhiteList);
+								
+								free(TempWhiteList);
+								free(TempAfterComma);
+
+							}
+							if (Whitelist[strlen(Whitelist) - 1] == ',')
+							{
+								Whitelist[strlen(Whitelist) - 1] = '\0';
+							}
+						}
+					}
+
+					Query = sqlite3_mprintf("UPDATE channels SET whitelist = '%q' where name LIKE '%q'", Whitelist, Channel);
+					int ResultNonEmptyWhiteList = sqlite3_exec(Database, Query, 0, 0, &ErrorMsg);
+					if (ResultNonEmptyWhiteList != SQLITE_OK)
+					{
+						free(ErrorMsg);
+						Result = 0;
+					}
+					free(Temp);
+					break;
+				}
+				else
+				{
+					free(Temp);
+					break;
+				}
+			}
+		} while (ResultMainQuery == SQLITE_ROW);
+	}
+	if (Whitelist)
+	{
+		free(Whitelist);
+	}
+
+	return Result;
+}
+
+int SqliteAddToWhitelist(sqlite3 *Database, char *Channel, char *Name)
+{
+	char *ErrorMsg = 0;
+	int Result = 1;
+	sqlite3_stmt *Statement;
+
+	char *Query = sqlite3_mprintf("SELECT whitelist FROM channels WHERE name LIKE '%q'", Channel);
+	int ResultMainQuery = sqlite3_prepare_v2(Database, Query, strlen(Query) + 1, &Statement, 0);
+	if (ResultMainQuery == SQLITE_OK)
+	{
+		char *Whitelist = 0;
+		do 
+		{
+			ResultMainQuery = sqlite3_step(Statement);
+			if (ResultMainQuery == SQLITE_ROW)
+			{
+				char *Temp = (char*)malloc(sizeof(char) * 1024);
+
+				strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
+				Whitelist = (char*)malloc(sizeof(char*) * (strlen(Temp) + 1));
+				strcpy(Whitelist, Temp);
+
+				if (strlen(Whitelist) == 0)
+				{
+					// Empty whitelist
+					Query = sqlite3_mprintf("UPDATE channels set whitelist = '%q' where name LIKE '%q'", Name, Channel);
+					int ResultEmptyWhitelist = sqlite3_exec(Database, Query, 0, 0, &ErrorMsg);
+					if (ResultEmptyWhitelist != SQLITE_OK)
+					{
+						free(ErrorMsg);
+						Result = 0;
+					}
+					free(Temp);
+					break;
+
+				}
+				else
+				{
+					//concactenate onto the list.
+					Query = sqlite3_mprintf("UPDATE channels SET whitelist = whitelist || ',%q' where name LIKE '%q'", Name, Channel);
+					int ResultNonEmptyWhiteList = sqlite3_exec(Database, Query, 0, 0, &ErrorMsg);
+					if (ResultNonEmptyWhiteList != SQLITE_OK)
+					{
+						free(ErrorMsg);
+						Result = 0;
+					}
+					free(Temp);
+					break;
+				}
+			}
+		} while (ResultMainQuery == SQLITE_ROW);
+	}
+	return Result;
+}
+
 char* SqliteFindChannelID(sqlite3 *Database, char *Name)
 {
 	char *ErrorMsg = 0;
@@ -190,7 +351,7 @@ int SqliteRemoveChannel(sqlite3 *Database, char *Name)
 			char TableName[256];
 			snprintf(TableName, sizeof(TableName), "triggers_%s", Name);
 			Query = sqlite3_mprintf("DROP TABLE '%q';", TableName);
-		
+
 			Result = sqlite3_exec(Database, Query, 0, 0, &ErrorMsg);
 			if (Result == SQLITE_OK)
 			{
@@ -243,4 +404,76 @@ int SqliteInsertChannel(sqlite3 *Database, char *Name, char *Owner)
 	return 0;
 }
 
+int SqliteIsChannelAdmin(sqlite3 *Database, char *Channel, char *Name)
+{
+	int Result = 0;
+	char *Admin = 0;
+	
+	sqlite3_stmt *Statement;
+	char *Query = sqlite3_mprintf("SELECT owner FROM channels WHERE name LIKE '%q'", Channel);
+	int QueryResult = sqlite3_prepare_v2(Database, Query, strlen(Query) + 1, &Statement, 0);
+	if (QueryResult == SQLITE_OK)
+	{
+		do 
+		{
+			QueryResult = sqlite3_step(Statement);
+			if (QueryResult == SQLITE_ROW)
+			{
+				char *Temp = (char*)malloc(sizeof(char) * 1024);
 
+				strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
+				Admin = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
+				strcpy(Admin, Temp);
+
+				free(Temp);
+			}
+		} while (QueryResult == SQLITE_ROW);
+	}
+
+	if (Admin)
+	{
+		if (strstr(Admin, Name))
+		{
+			Result = 1;
+		}
+		free(Admin);
+	}
+	return Result;
+}
+
+int SqliteIsWhitelistedOnChannel(sqlite3 *Database, char *Channel, char *Name)
+{
+	int Result = 0;
+	char *Whitelist = 0;
+	
+	sqlite3_stmt *Statement;
+	char *Query = sqlite3_mprintf("SELECT whitelist FROM channels WHERE name LIKE '%q'", Channel);
+	int QueryResult = sqlite3_prepare_v2(Database, Query, strlen(Query) + 1, &Statement, 0);
+	if (QueryResult == SQLITE_OK)
+	{
+		do 
+		{
+			QueryResult = sqlite3_step(Statement);
+			if (QueryResult == SQLITE_ROW)
+			{
+				char *Temp = (char*)malloc(sizeof(char) * 1024);
+
+				strcpy(Temp, (char*)sqlite3_column_text(Statement, 0));
+				Whitelist = (char*)malloc(sizeof(char) * (strlen(Temp) + 1));
+				strcpy(Whitelist, Temp);
+
+				free(Temp);
+			}
+		} while (QueryResult == SQLITE_ROW);
+	}
+
+	if (Whitelist)
+	{
+		if (strstr(Whitelist, Name))
+		{
+			Result = 1;
+		}
+		free(Whitelist);
+	}
+	return Result;
+}
